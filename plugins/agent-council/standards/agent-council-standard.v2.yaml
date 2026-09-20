@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "agent-council.standard/v2",
+  "status": "qualification_in_progress",
+  "purpose": "Preview council execution contract. It is not authority for host, workload, publication, credential, or third-party action until separately qualified.",
+  "authority_model": {
+    "protected_records": ["case", "dispatch", "gate", "closure"],
+    "protected_record_author": "system",
+    "closure_may_supply_proof": false,
+    "policy_bundle_separate_from_engineering_candidate": true,
+    "stage_gates_monotonic": true,
+    "global_interruption_reconciliation": true,
+    "serialized_case_authoring": true,
+    "event_ledger": "the submitted event list must exactly match the immutable event directory and its previous-event SHA-256 chain",
+    "evidence_integrity": "every referenced evidence file is confined to the case evidence directory and must match its recorded SHA-256",
+    "behavioral_evidence": "only positively typed, immutable files whose content, evidence payload, enclosing evidence event, active engineering candidate ID and digest, and active cycle ID agree exactly, with structured run, assertion, and passed result fields, can satisfy implementation, test, review, gate, or closure evidence",
+    "metadata_evidence": "provider capability or dispatch observations and candidate-transition metadata are provenance or lifecycle metadata only; they are never behavioral evidence",
+    "unresolved_failure": "an active failed test, any active failed gate including a non-normative gate ID, contradictory authority disposition, or unfinished packet holds closure until explicitly superseded; an active unsupported passed gate is refused",
+    "effective_disposition": "each active implementation, review, native qualification run, routing, design, and final decision has exactly one valid authority disposition; an invalid authority, hold, rejection, or duplicate blocks closure until a same-candidate, same-cycle supersession retires it",
+    "decision_order": "ultimate routing and required design precede implementation; review follows implementation, packet results, tests, and referenced verification evidence; final disposition follows review and qualification runs",
+    "review_independence": "every route requires different implementation and review task and context identities",
+    "dispatch_plan_identity": "every plan is an immutable purpose-bound request pinned to case, candidate, cycle, policy, registry, binding, model, effort, context, decision kind, and qualification run when applicable",
+    "stale_dispatch_plan": "candidate or cycle transitions invalidate every unconsumed plan; capture refuses any request whose immutable bytes or pinned identity changed",
+    "supersession": "valid only when target exists, has the same case and cycle, and is retired without deleting history",
+    "changed_candidate": "opens a new cycle; prior candidate evidence is not reusable as passing evidence",
+    "qualification_class_pairing": "activation_class council_qualification and case_kind council_qualification are required together, and neither may appear without the other",
+    "candidate_artifact_boundary": "candidate artifact digest pins runtime, policy, profile, and plugin manifest bytes. Release status attestation remains detached from the behavioral candidate identity",
+    "local_assurance": "the local runtime can report structural_only receipt validation only. Its provider_execution_attested and uat_authority outcome fields are always false; actual native provider attestation and UAT authority remain an outer-orchestrator responsibility bound to collaboration returns and durable output evidence"
+  },
+  "route_role_requirements": {
+    "R1": {"ultimate": "ultimate_intelligence", "implementation": "technical_tactical_intelligence", "review": "operational_intelligence"},
+    "R2": {"ultimate": "ultimate_intelligence", "implementation": "technical_tactical_intelligence", "review": "operational_intelligence"},
+    "R3": {"ultimate": "ultimate_intelligence", "implementation": "technical_tactical_intelligence", "review": "operational_intelligence"}
+  },
+  "activation_route_floors": {
+    "bounded_automation_repair": "R1",
+    "unexpected_qualification_failure": "R2",
+    "unqualified_composition": "R2",
+    "shared_contract_change": "R3",
+    "lifecycle_authority_change": "R3",
+    "architecture_change": "R3",
+    "risk_boundary_change": "R3",
+    "uat_gate_change": "R3",
+    "repeated_unresolved_failure": "R3",
+    "council_qualification": "R3"
+  },
+  "route_closure_gates": {
+    "R1": ["ultimate-routing", "implementation-verification", "operational-review", "ultimate-final-disposition"],
+    "R2": ["ultimate-routing", "ultimate-design", "implementation-verification", "independent-review", "ultimate-final-disposition"],
+    "R3": ["ultimate-routing", "ultimate-design", "implementation-verification", "fault-tests", "independent-review", "ultimate-final-disposition"]
+  },
+  "qualification_closure_gates": ["native-forward-run-1", "native-forward-run-2"],
+  "qualification_freshness": {
+    "required_native_runs": 2,
+    "distinct_platform_task_ids": true,
+    "distinct_platform_context_ids": true,
+    "same_candidate_and_cycle": true,
+    "ultimate_role_required": true,
+    "approved_disposition_required": true,
+    "provider_transcript_is_authoritative": false,
+    "local_receipt_validation": "structural_replay_only",
+    "external_provider_attestation": "required outside this local runtime; structural receipt validation is not a provider execution attestation"
+  },
+  "roles": ["ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence"],
+  "registry_binding": {
+    "binding_location": "versioned agent model registry",
+    "active_cycle_pins": ["registry_version", "registry_sha256"],
+    "registry_sha256": "canonical JSON SHA-256 of the registry excluding registry_sha256",
+    "binding_sha256": "canonical JSON SHA-256 of one binding excluding binding_sha256",
+    "qualified_provider_state_required": true,
+    "model_identifiers_permitted_in_standard": false,
+    "unknown_or_new_model": "candidate_until_qualified"
+  },
+  "reasoning": {
+    "default_effort": "high",
+    "higher_effort_requires": ["explicit_case_requirement", "complexity_escalation", "provider_constraint", "unresolved_risk", "route_floor"],
+    "provider_attestation_must_match_selected_effort": true
+  },
+  "providers": {"claude_code": {"council_status": "fail_closed_until_qualified"}},
+  "security": {
+    "recursive_secret_refusal": true,
+    "forbidden_field_names": ["secret", "password", "passwd", "credential", "api_key", "access_token", "refresh_token", "private_key", "dpapi", "cookie"],
+    "utf8_control_bytes_refused": true
+  },
+  "stages": ["intake", "observe", "orient", "decide", "act", "verify", "review", "close"]
+}

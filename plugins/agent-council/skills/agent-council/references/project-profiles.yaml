@@ -1,0 +1,24 @@
+schema_version: "agent-council.project-profiles/v1"
+purpose: "Load project-specific risk and evidence policy without coupling the Council core to one product."
+discovery:
+  order:
+    - ".agent-council/profile.yaml in the active repository"
+    - "A packaged profile explicitly selected by the project"
+    - "profiles/default.yaml from this plugin"
+  rule: "Use one explicit effective profile. The current runtime pins only the packaged default snapshot and hash. Repository profiles are interpreted by the outer agent, not dynamically merged or enforced by the local runtime."
+required_fields:
+  - "schema_version"
+  - "profile_id"
+  - "route_floors"
+  - "required_evidence"
+rules:
+  - "Profiles may raise a route floor or add gates when the outer agent explicitly applies them."
+  - "Profiles cannot permit self-review, lower-tier substitution for ultimate gates, unverified model identity, or narrative-only closure."
+  - "Profiles cannot grant mutation, publication, destructive, credential, production, or third-party authority."
+  - "Unknown profile keys fail closed when they affect authority or closure."
+  - "Project-specific tools and domain rules remain in the project profile, not the reusable Council core."
+  - "Unsupported inheritance, unknown profile semantics, or ambiguous profile selection hold the affected route. Do not imply the runtime enforced them."
+runtime_boundary:
+  - "Case initialization pins profiles/default.yaml by SHA-256 and records its profile ID as an immutable snapshot."
+  - "The runtime does not parse YAML project profiles, dynamically select a repository profile, merge inheritance, or decide semantic route floors."
+  - "The outer Codex agent owns semantic profile interpretation and must state the effective profile before opening a case."

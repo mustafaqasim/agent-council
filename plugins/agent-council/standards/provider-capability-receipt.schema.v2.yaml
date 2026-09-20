@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "urn:agent-council:schema:provider-capability-receipt:v2", "title": "Agent Council v2 provider capability receipt", "type": "object", "additionalProperties": false,
+  "required": ["receipt_type", "receipt_id", "receipt_sha256", "provider", "observed_at", "context_id", "models", "efforts"],
+  "properties": {"receipt_type": {"const": "provider_capability"}, "receipt_id": {"type": "string", "minLength": 1}, "receipt_sha256": {"pattern": "^[a-f0-9]{64}$"}, "provider": {"type": "string", "minLength": 1}, "observed_at": {"type": "string", "format": "date-time"}, "context_id": {"type": "string", "minLength": 1}, "models": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "efforts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]}}}
+}

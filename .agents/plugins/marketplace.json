@@ -1,0 +1,20 @@
+{
+  "name": "agent-council",
+  "interface": {
+    "displayName": "Agent Council"
+  },
+  "plugins": [
+    {
+      "name": "agent-council",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-council"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
