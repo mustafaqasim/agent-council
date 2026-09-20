@@ -1,6 +1,6 @@
 {
   "name": "agent-council",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Govern complex engineering work with risk-based model delegation and evidence gates.",
   "author": {
     "name": "Mustafa Qasim"
