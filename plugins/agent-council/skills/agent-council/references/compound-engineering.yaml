@@ -58,6 +58,6 @@ recursion_prevention:
   - "Council authority workers inspect or decide only and do not invoke Compound Engineering skills."
   - "Candidate or cycle changes invalidate unconsumed handoffs and dispatch plans."
 unavailable:
-  - "If Compound Engineering is absent, Codex may use an equivalent native method and record that substitution."
+  - "If Compound Engineering is absent, the outer agent may use an equivalent native method and record that substitution."
   - "If a required Council model tier is unavailable, Compound Engineering may prepare evidence but cannot advance the dependent Council gate."
   - "Do not install Compound Engineering automatically or fabricate its receipts when it is absent."

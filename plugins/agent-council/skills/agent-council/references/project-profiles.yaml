@@ -21,4 +21,4 @@ rules:
 runtime_boundary:
   - "Case initialization pins profiles/default.yaml by SHA-256 and records its profile ID as an immutable snapshot."
   - "The runtime does not parse YAML project profiles, dynamically select a repository profile, merge inheritance, or decide semantic route floors."
-  - "The outer Codex agent owns semantic profile interpretation and must state the effective profile before opening a case."
+  - "The outer agent owns semantic profile interpretation and must state the effective profile before opening a case."
