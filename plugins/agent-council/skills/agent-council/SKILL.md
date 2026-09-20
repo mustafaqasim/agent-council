@@ -5,7 +5,7 @@ description: Govern complex Codex engineering work with risk-based model-tier de
 
 # Agent Council
 
-Use the Council as the outer governance layer. Codex remains the agent harness. This skill classifies risk, selects qualified model tiers, delegates bounded work, and verifies evidence before completion.
+Use the Council as the outer governance layer. The outer agent remains the execution harness. This skill classifies risk, selects qualified model tiers, delegates bounded work, and verifies evidence before completion.
 
 Preserve the user's authority boundary. Diagnosis does not authorize implementation. Planning does not authorize mutation. A Council decision does not grant destructive, publication, credential, third-party, or production authority.
 
@@ -46,8 +46,8 @@ Read [Compound Engineering integration](references/compound-engineering.yaml) wh
 
 Use the local engine at `../../scripts/core/agent-council/0.2.0/Invoke-AgentCouncil.py` for immutable case authoring and structural validation. Store project cases under `.agent/council/<case_id>/` unless the project profile provides another confined path.
 
-The engine never launches models and never grants operational authority. Codex performs native delegation. The engine records the plan, validates model and context identity, checks evidence linkage, prevents self-review, and refuses closure when required gates are missing, failed, stale, or bound to different candidate bytes.
+The engine never launches models and never grants operational authority. The outer agent performs native delegation. The engine records the plan, validates model and context identity, checks evidence linkage, prevents self-review, and refuses closure when required gates are missing, failed, stale, or bound to different candidate bytes.
 
-Local receipts provide `structural_only` assurance. Provider execution and real-world acceptance remain responsibilities of the outer Codex task and its observed tool results.
+Local receipts provide `structural_only` assurance. Provider execution and real-world acceptance remain responsibilities of the outer agent task and its observed tool results.
 
 If the required model tier or Compound Engineering skill is unavailable, record the limitation and hold only the dependent gate. Do not silently substitute a lower tier or invent a receipt.

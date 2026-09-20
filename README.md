@@ -1,6 +1,6 @@
 # Agent Council
 
-Agent Council is a Codex plugin for governing complex engineering work. It maps work to model tiers, records the planned delegation, requires independent review where the route demands it, and keeps local evidence linked to the exact candidate under review.
+Agent Council is a plugin for governing complex engineering work. It maps work to model tiers, records the planned delegation, requires independent review where the route demands it, and keeps local evidence linked to the exact candidate under review.
 
 The local runtime uses only the Python standard library.
 
@@ -16,18 +16,25 @@ The local runtime uses only the Python standard library.
 - It does not launch models, verify a provider's execution, or grant production or acceptance authority.
 - It does not dynamically benchmark available models or promise that every account can use every model in its registry.
 - Project profiles are interpreted by the outer agent. The runtime only pins the packaged default profile for traceability.
-- Compound Engineering is optional. Native Codex operation remains available when it is absent.
+- Compound Engineering is optional. The outer agent's native operation remains available when it is absent.
 
 ## Install from GitHub
 
-Add the marketplace and install the plugin:
+**Codex:**
 
 ```sh
 codex plugin marketplace add mustafaqasim/agent-council --ref main
 codex plugin add agent-council@agent-council
 ```
 
-Start a new Codex task after installation so the new skill is loaded.
+**Claude Code:**
+
+```sh
+claude plugin marketplace add mustafaqasim/agent-council --ref main
+claude plugin add agent-council@agent-council
+```
+
+Start a new task after installation so the new skill is loaded.
 
 ## Local safety model
 
