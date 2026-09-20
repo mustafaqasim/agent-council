@@ -1,86 +1,111 @@
 # Agent Council
 
-Use different AI models from one coding chat, without switching them by hand.
+Agent Council is a reusable governance skill for AI-assisted engineering work. It helps Codex and Claude Code decide when a task needs a stronger model, an independent review, or a simple worker check.
 
-Agent Council lets your main Codex or Claude Code chat hand a subtask to the model tier that fits the work:
+Use it when a task is risky, unclear, repeated, or changes a shared design. Leave routine work alone.
 
-- A fast, economical model for routine checks and evidence gathering.
-- A technical model for a bounded implementation.
-- A stronger model for difficult diagnosis, review, or architecture.
-- A top-tier model for routing and final decisions.
+## What it does
 
-In Codex, that can mean Luna for routine work, Terra for implementation, Sol for review, and Astra for the hardest decisions.
+The Council puts a small decision process around complex work:
 
-You stay in the same chat. The main agent decides when to delegate, starts the sub-agent with an explicit model, and brings the result back into the task.
+1. Classify the work as a bounded repair, an uncertain problem, or a high-impact change.
+2. Assign the right model tier for planning, implementation, review, and mechanical checks.
+3. Keep a local record of the decision, the evidence, and the final outcome.
+4. Prevent a case from being marked complete when required evidence or independent review is missing.
 
-## Why this exists
+The plugin is model-provider neutral. It uses four roles, not fixed model names:
 
-Manually changing models creates two kinds of waste:
+- ultimate intelligence: hard diagnosis, architecture, final decision
+- operational intelligence: integration and independent review
+- technical tactical intelligence: bounded implementation and verification
+- worker intelligence: routine checks and evidence collection
 
-- Keep a premium model running and you spend expensive tokens on easy work.
-- Keep a cheaper model on a hard problem and you can burn through retries before escalating anyway.
-
-Then, once the hard part is over, you have to remember to switch back down. The repeated handoff breaks your flow and makes one task feel like several separate sessions.
-
-Agent Council moves that routing decision into the chat. It can escalate when the work becomes harder, use a cheaper worker for routine steps, and require a separate reviewer when the result needs an independent check.
-
-It does not read your remaining quota or predict cost. It routes from the task's complexity and risk.
-
-## What happens during a task
-
-The main chat classifies the current piece of work:
-
-- **R1**: a bounded fix with a known cause and narrow impact.
-- **R2**: an unexpected failure or uncertain composition.
-- **R3**: architecture, shared contracts, safety boundaries, or repeated unresolved failures.
-
-That route tells the chat which model tier and checks are required. The chat launches the sub-agents. Agent Council records the routing decision, checks the returned model identity and evidence links, and refuses to close the case when required checks are missing or stale.
-
-The local engine uses only the Python standard library.
+Your Codex or Claude Code agent performs the actual delegation through its native tools. Agent Council does not contact model providers or spend money by itself.
 
 ## Install
 
-**Codex:**
+These commands use the GitHub repository. You need access to it if it is private. Start a new Codex or Claude Code task after installing so the skill is available in the new task.
+
+### Codex
 
 ```sh
 codex plugin marketplace add mustafaqasim/agent-council --ref main
 codex plugin add agent-council@agent-council
 ```
 
-**Claude Code:**
+### Claude Code
 
 ```sh
-claude plugin marketplace add mustafaqasim/agent-council --ref main
-claude plugin add agent-council@agent-council
+claude plugin marketplace add mustafaqasim/agent-council
+claude plugin install agent-council@agent-council
 ```
 
-Start a new task after installation so the skill loads.
+### Install from a local checkout
 
-## What it does not do
-
-- The local engine does not call model providers. The main chat delegates through the native Codex or Claude Code tools.
-- It does not guarantee that a provider actually ran the model it claims. It verifies identity based on observed tool results, not provider assertions.
-- It does not dynamically benchmark models or guarantee every model in the registry is available on your account.
-- Compound Engineering is optional. The plugin works without it.
-
-## Safety boundary
-
-Case records require `--project-root` and `--case-root` to point to a directory you control. The engine resolves all paths inside that boundary and refuses mutations through a different root or a symlinked path.
-
-This protects against accidental writes by the current user. It is not a sandbox against a malicious process running as the same user.
-
-The engine rejects common secret-shaped values before writing a record. That is pattern-matching, not a guarantee. Do not pass secrets as command-line arguments or in evidence fields.
-
-## Development
-
-Run the plugin check and contract groups from the plugin directory:
+Use this only when testing or contributing to the plugin:
 
 ```sh
-cd plugins/agent-council
-python3 scripts/Test-AgentCouncilPlugin.py
+codex plugin marketplace add /path/to/agent-council
+codex plugin add agent-council@agent-council
+```
+
+For Claude Code, add the same local repository path as a marketplace, then install `agent-council@agent-council`.
+
+## Update
+
+### Codex
+
+Refresh the marketplace, then install the plugin again. Restart or begin a new task after the update.
+
+```sh
+codex plugin marketplace upgrade agent-council
+codex plugin add agent-council@agent-council
+```
+
+### Claude Code
+
+```sh
+claude plugin update agent-council@agent-council
+```
+
+Claude Code reports when a restart is required. Do it before expecting the new skill files to apply.
+
+## Use it
+
+State the work normally, then ask for Council governance. For example:
+
+```text
+Use Agent Council to diagnose why this deployment fails after restart.
+```
+
+```text
+Use Agent Council to plan and implement this shared authentication change.
+```
+
+```text
+Use Agent Council to review this release candidate before it is shipped.
+```
+
+For simple tasks, do not invoke the Council. A request such as "rename this variable" or "show the current status" should stay direct.
+
+When the Council is active, the host agent should briefly state which model tier it is assigning and why. It should then report the evidence and result, not private reasoning.
+
+## Safety and limits
+
+- Council cases are kept inside the project path you specify. The local engine refuses writes outside that boundary and refuses symlinked case paths.
+- It rejects common secret-shaped values before writing case records. This is a guardrail, not a guarantee. Never put passwords, tokens, or private keys in commands or evidence.
+- It records structural evidence locally. It cannot prove a provider ran a particular model beyond the host agent's observed tool results.
+- Compound Engineering is optional. If installed, it can provide the delivery workflow while Agent Council controls routing and evidence gates.
+
+## For contributors
+
+Run the checks from the repository root:
+
+```sh
+python3 plugins/agent-council/scripts/Test-AgentCouncilPlugin.py
 for group in schema lifecycle stages routes provider authoring security dispatch-contracts; do
-  python3 scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py --group "$group"
+  python3 plugins/agent-council/scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py --group "$group"
 done
 ```
 
-See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [MIGRATION.md](MIGRATION.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules, [SECURITY.md](SECURITY.md) for reporting security issues, and [MIGRATION.md](MIGRATION.md) for compatibility notes.
