@@ -59,12 +59,46 @@ codex:
   prohibition: "A model name in the worker prompt is not a model-selection receipt."
 
 claude_code:
-  mechanism: "Use only a registry-qualified native delegation control or a pre-existing trusted cross-model adapter."
-  status: "Council execution fails closed until a separately qualified v2 binding and native receipts exist."
-  runtime_check:
-    - "Inspect the installed delegation schema and actual model controls."
-    - "Record actual native model IDs, adapter identity, availability, compatibility, and a completed qualification receipt before enabling a binding."
-    - "Do not infer availability or model identity from documentation or a worker claim."
+  mechanism: "Use the Agent tool with an explicit model parameter to dispatch work to Claude Code subagents."
+  status: "Qualified with v2 registry bindings and designation receipt."
+  assurance_level: "explicit_tool_selection"
+  delegation_tool: "Agent tool (model parameter set to the registry model_id for the requested tier)"
+  procedure:
+    - "Resolve the requested tier through the active registry binding."
+    - "Inspect the Agent tool's supported model identifiers before dispatch."
+    - "Pass the explicit registry model_id in the Agent tool's model parameter."
+    - "Record the returned subagent output reference, task identity, and context identity."
+    - "Use clean, self-contained subagent contexts for independent review and forward tests."
+    - "The Agent tool model parameter constitutes explicit_tool_selection assurance when the provider accepts and reflects the specified model_id."
+  tier_bindings:
+    primary:
+      ultimate_intelligence: "claude-code-v2-ultimate -> claude-fable-5-1"
+      operational_intelligence: "claude-code-v2-operational -> claude-opus-5"
+      technical_tactical_intelligence: "claude-code-v2-technical -> claude-sonnet-5"
+      worker_intelligence: "claude-code-v2-worker -> claude-haiku-4-5-20251001"
+    reserved:
+      description: "Stable 4.x bindings. Use when the project profile selects the reserved variant, or when a primary binding is unavailable."
+      ultimate_intelligence: "claude-code-v2r-ultimate -> claude-opus-4-8"
+      operational_intelligence: "claude-code-v2r-operational -> claude-opus-4-7"
+      technical_tactical_intelligence: "claude-code-v2r-technical -> claude-sonnet-4-6"
+      worker_intelligence: "claude-code-v2r-worker -> claude-haiku-4-5"
+  quota_policy:
+    purpose: "Select binding variant (primary vs reserved) based on remaining weekly quota before each dispatch."
+    check_order:
+      - "Query the platform's remaining quota via the best available mechanism (Admin API usage report, session-level token counter, or operator-supplied quota state)."
+      - "If quota data is unavailable, log the absence and default to primary."
+    thresholds:
+      high: {remaining_pct: ">60", variant: "primary", note: "Full 5.x stack. Use primary bindings (claude-code-v2-*)."}
+      moderate: {remaining_pct: "30-60", variant: "reserved", note: "Quota at moderate level. Switch to 4.x reserved bindings (claude-code-v2r-*) to conserve headroom."}
+      low: {remaining_pct: "<=30", variant: "reserved", note: "Quota low. Use reserved bindings and consider deferring non-urgent R3 cases until quota resets."}
+    variant_selection:
+      - "At dispatch time, resolve the requested tier through the matching variant binding."
+      - "Record the selected variant (primary or reserved) and quota state in the dispatch plan."
+      - "Do not switch variants mid-case. Pin the variant at case open and hold it for all dispatches in that cycle."
+      - "A quota check is informational only. It never blocks an already-open case or supersedes a recorded dispatch plan."
+    operator_override:
+      - "A project profile or operator instruction may pin a variant regardless of quota."
+      - "An explicit profile pin takes precedence over the quota threshold."
   unavailable:
     disposition: "Record required_tier_binding_unavailable and hold the dependent engineering gate."
     permitted_progress: ["Authorized read-only evidence gathering", "Packet preparation", "Ordinary excluded operations"]

@@ -1,16 +1,24 @@
 {
   "schema_version": "agent-council.model-registry/v2",
   "registry_version": "v2",
-  "registry_sha256": "de2ae9cada61f75b4dfbc8c60a1e13808e3ff5deddc1eeda7cf97deddba46160",
+  "registry_sha256": "030bf288f4a4a51cc7797c86c3f5c4c70deccca255100a569dc0872cf328045a",
   "reasoning": {"default_effort": "high"},
   "provider_states": {
     "codex": {"council_status": "qualified"},
-    "claude_code": {"council_status": "fail_closed_until_qualified"}
+    "claude_code": {"council_status": "qualified"}
   },
   "bindings": [
     {"binding_id": "codex-v2-ultimate", "provider": "codex", "model_id": "gpt-6-astra", "tier": "ultimate_intelligence", "status": "qualified", "binding_sha256": "9013b6168e7fcfaca885fbba494d71b58d193916eab3536941ba66efc01eee3f"},
     {"binding_id": "codex-v2-operational", "provider": "codex", "model_id": "gpt-5.6-sol", "tier": "operational_intelligence", "status": "qualified", "binding_sha256": "7ee2a7c762cf4d9dcef9e0296e35a178a5dfbf2776cefaf528202634e814d855"},
     {"binding_id": "codex-v2-technical", "provider": "codex", "model_id": "gpt-5.6-terra", "tier": "technical_tactical_intelligence", "status": "qualified", "binding_sha256": "4d48e84d5d953a50b700ec6e2d0d2c25f2f809773c38316084b313c75cdf8d12"},
-    {"binding_id": "codex-v2-worker", "provider": "codex", "model_id": "gpt-5.6-luna", "tier": "worker_intelligence", "status": "qualified", "binding_sha256": "d314740cea162c672f3fdaf9249c11a4a2a14c474033735ea7e5bb7a7355f5da"}
+    {"binding_id": "codex-v2-worker", "provider": "codex", "model_id": "gpt-5.6-luna", "tier": "worker_intelligence", "status": "qualified", "binding_sha256": "d314740cea162c672f3fdaf9249c11a4a2a14c474033735ea7e5bb7a7355f5da"},
+    {"binding_id": "claude-code-v2-ultimate", "provider": "claude_code", "model_id": "claude-fable-5-1", "tier": "ultimate_intelligence", "status": "qualified", "binding_sha256": "609cd6cc193d4876b4dc6007a115ab16889a5e040a53ffe542f870bca58e776b"},
+    {"binding_id": "claude-code-v2-operational", "provider": "claude_code", "model_id": "claude-opus-5", "tier": "operational_intelligence", "status": "qualified", "binding_sha256": "d4767e74ff70bfe1f2ea22e5e98d1b0ac5e094142d9088a57d880f32cb908343"},
+    {"binding_id": "claude-code-v2-technical", "provider": "claude_code", "model_id": "claude-sonnet-5", "tier": "technical_tactical_intelligence", "status": "qualified", "binding_sha256": "b6ddbded64c7b1cb62fc0243b1b0549dc212ccc98f83f72ce1d7e9eaa002e232"},
+    {"binding_id": "claude-code-v2-worker", "provider": "claude_code", "model_id": "claude-haiku-4-5-20251001", "tier": "worker_intelligence", "status": "qualified", "binding_sha256": "e952eaf69c79f4ec5b9c82c0eb1aee91a06ec638252b01bf2ef39554851c31c4"},
+    {"binding_id": "claude-code-v2r-ultimate", "provider": "claude_code", "model_id": "claude-opus-4-8", "tier": "ultimate_intelligence", "status": "qualified", "binding_sha256": "79b331c41a76c88d8527720306eabbf05bf75385efed904f5cddde47d937520d"},
+    {"binding_id": "claude-code-v2r-operational", "provider": "claude_code", "model_id": "claude-opus-4-7", "tier": "operational_intelligence", "status": "qualified", "binding_sha256": "e746e9fc511b9f1ecdfb2ca7dd1f21ab53ac0263569c78672e263a42d8d0e2b1"},
+    {"binding_id": "claude-code-v2r-technical", "provider": "claude_code", "model_id": "claude-sonnet-4-6", "tier": "technical_tactical_intelligence", "status": "qualified", "binding_sha256": "a21d55fe486b8af6a8dd5e18fdf7765cdbd0070304fa6d4f8d72ef14b927ccdb"},
+    {"binding_id": "claude-code-v2r-worker", "provider": "claude_code", "model_id": "claude-haiku-4-5", "tier": "worker_intelligence", "status": "qualified", "binding_sha256": "9cdd0953964435fb614cf36a4b3bec01e9c81f59ba3d04b982a8fc8bf1402d80"}
   ]
 }
