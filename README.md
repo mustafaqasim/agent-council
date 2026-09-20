@@ -1,26 +1,28 @@
 # Agent Council
 
-Agent Council is a plugin that decides which AI model should do each piece of work in a task, checks that the work was actually done by the model it claimed to use, and refuses to mark a case complete if the evidence doesn't hold up.
+Keep one coding chat moving without manually playing model dispatcher.
 
-You install it once. After that, when you open a task your agent will classify the risk, pick the right model tier, delegate the work, and verify the result before closing.
+Some parts of a task need a stronger model: an unfamiliar failure, an architecture choice, or a change to a shared contract. Other parts do not: gathering evidence, making a narrow edit, or checking a known result. Switching models by hand is easy to get wrong. You can keep a premium model on routine work, spend several attempts on a hard problem before escalating, then forget to scale back down once the difficult part is over.
 
-The local engine runs on Python standard library only. No extra dependencies.
+Agent Council is an attempt to remove that friction. It gives the outer coding agent a way to classify a piece of work, choose an appropriate model tier, delegate a bounded subtask, and retain evidence for the result. The goal is not to replace your main chat. It is to let that chat use the right help at the right time.
 
-## The problem it solves
+The local engine uses only the Python standard library.
 
-Coding agents make decisions about which model to use and whether work is done, but they don't record those decisions or verify them. You end up with no audit trail, and no check that a cheaper model didn't quietly substitute for the one you expected.
+## When it helps
 
-Agent Council adds a governance layer on top: it classifies tasks by risk level, assigns each to a model tier matched to that risk, requires independent review where the risk warrants it, and keeps a local record of what was done and by whom.
+Use Agent Council when a task changes shape as you work through it: a simple repair turns into an uncertain diagnosis, a retry reveals a deeper design problem, or an implementation needs an independent check before it can be accepted.
 
-## How it works
+It is not a quota meter or a cost forecaster. It does not inspect your account usage. It helps the agent make and record better routing decisions, so you do not have to manage every model handoff yourself.
 
-Every task gets a route:
+## How routing works
 
-- **R1**: a bounded fix with a known cause and narrow impact. One model tier, basic evidence.
-- **R2**: uncertain composition or an unexpected failure. Requires a design decision and a higher model tier.
-- **R3**: architecture, shared contracts, safety boundaries, or repeated failures. Requires ultimate-tier models and independent review.
+The outer agent assigns a route to work that needs Council governance:
 
-The plugin does not run models itself. It records the plan, checks that the delegated model matches the registry, validates the evidence, and blocks closure when gates are missing or stale.
+- **R1**: a bounded fix with a known cause and narrow impact.
+- **R2**: an unexpected failure or uncertain composition.
+- **R3**: architecture, shared contracts, safety boundaries, or repeated unresolved failures.
+
+The plugin does not run models itself. It gives the outer agent a model-routing and evidence protocol. The local engine records the plan, checks local record consistency, validates evidence links, and blocks closure when required gates are missing or stale.
 
 ## Install
 
