@@ -1255,8 +1255,11 @@ def test_authoring(group: str) -> list[tuple[str, bool, str]]:
         rows.append(("codex-capture-single-use", code == 0 and capture.get("result") == "accepted" and code2 != 0 and reused.get("code") == "DISPATCH_PLAN_CONSUMED", "capture records platform return references and consumes plan nonce"))
         packet_code, _ = cli("packet-result", "--case-root", str(case_root), "--packet-id", plan.get("packet_id", "missing"), "--status", "completed", "--checks-json", '[{"gate_id":"implementation","status":"passed"}]')
         rows.append(("implementation-packet-result", packet_code == 0, "implementation dispatch has one completed checked packet"))
-        code, claude = cli("dispatch-plan", "--case-root", str(case_root), "--provider", "claude_code", "--role", "technical_tactical_intelligence", "--context-id", "context-safe")
-        rows.append(("claude-fails-closed", code != 0 and claude.get("code") == "REQUIRED_TIER_BINDING_UNAVAILABLE", "unqualified Claude adapter fails closed"))
+        claude_case = case_root.parent / "case-claude-qualified"
+        cli("init-case", "--case-root", str(claude_case), "--case-id", "case-claude-qualified", "--route", "R2", "--candidate-json", json.dumps(initial_candidate))
+        cli("capability-capture", "--case-root", str(claude_case), "--provider", "claude_code", "--model-id", "claude-fable-5-1", "--efforts-json", '["high"]', "--context-id", "context-claude")
+        claude_code_status, claude_plan = cli("dispatch-plan", "--case-root", str(claude_case), "--provider", "claude_code", "--role", "ultimate_intelligence", "--context-id", "context-claude", "--decision-kind", "routing")
+        rows.append(("claude-code-qualified-dispatch", claude_code_status == 0 and claude_plan.get("code") == "DISPATCH_PLAN_CREATED" and claude_plan.get("model_id") == "claude-fable-5-1" and claude_plan.get("binding_id") == "claude-code-v2-ultimate", "qualified Claude Code adapter resolves its ultimate-tier binding"))
         code, close = cli("close-case", "--case-root", str(case_root))
         rows.append(("close-before-gates", code != 0 and close.get("code") == "REQUIRED_GATE_EVIDENCE_MISSING", "close fails before required gates"))
         code, tested = cli("test-record", "--case-root", str(case_root), "--run-id", "test-safe", "--evidence-id", "evidence-valid")
