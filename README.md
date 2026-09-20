@@ -1,28 +1,42 @@
 # Agent Council
 
-Keep one coding chat moving without manually playing model dispatcher.
+Use different AI models from one coding chat, without switching them by hand.
 
-Some parts of a task need a stronger model: an unfamiliar failure, an architecture choice, or a change to a shared contract. Other parts do not: gathering evidence, making a narrow edit, or checking a known result. Switching models by hand is easy to get wrong. You can keep a premium model on routine work, spend several attempts on a hard problem before escalating, then forget to scale back down once the difficult part is over.
+Agent Council lets your main Codex or Claude Code chat hand a subtask to the model tier that fits the work:
 
-Agent Council is an attempt to remove that friction. It gives the outer coding agent a way to classify a piece of work, choose an appropriate model tier, delegate a bounded subtask, and retain evidence for the result. The goal is not to replace your main chat. It is to let that chat use the right help at the right time.
+- A fast, economical model for routine checks and evidence gathering.
+- A technical model for a bounded implementation.
+- A stronger model for difficult diagnosis, review, or architecture.
+- A top-tier model for routing and final decisions.
 
-The local engine uses only the Python standard library.
+In Codex, that can mean Luna for routine work, Terra for implementation, Sol for review, and Astra for the hardest decisions.
 
-## When it helps
+You stay in the same chat. The main agent decides when to delegate, starts the sub-agent with an explicit model, and brings the result back into the task.
 
-Use Agent Council when a task changes shape as you work through it: a simple repair turns into an uncertain diagnosis, a retry reveals a deeper design problem, or an implementation needs an independent check before it can be accepted.
+## Why this exists
 
-It is not a quota meter or a cost forecaster. It does not inspect your account usage. It helps the agent make and record better routing decisions, so you do not have to manage every model handoff yourself.
+Manually changing models creates two kinds of waste:
 
-## How routing works
+- Keep a premium model running and you spend expensive tokens on easy work.
+- Keep a cheaper model on a hard problem and you can burn through retries before escalating anyway.
 
-The outer agent assigns a route to work that needs Council governance:
+Then, once the hard part is over, you have to remember to switch back down. The repeated handoff breaks your flow and makes one task feel like several separate sessions.
+
+Agent Council moves that routing decision into the chat. It can escalate when the work becomes harder, use a cheaper worker for routine steps, and require a separate reviewer when the result needs an independent check.
+
+It does not read your remaining quota or predict cost. It routes from the task's complexity and risk.
+
+## What happens during a task
+
+The main chat classifies the current piece of work:
 
 - **R1**: a bounded fix with a known cause and narrow impact.
 - **R2**: an unexpected failure or uncertain composition.
 - **R3**: architecture, shared contracts, safety boundaries, or repeated unresolved failures.
 
-The plugin does not run models itself. It gives the outer agent a model-routing and evidence protocol. The local engine records the plan, checks local record consistency, validates evidence links, and blocks closure when required gates are missing or stale.
+That route tells the chat which model tier and checks are required. The chat launches the sub-agents. Agent Council records the routing decision, checks the returned model identity and evidence links, and refuses to close the case when required checks are missing or stale.
+
+The local engine uses only the Python standard library.
 
 ## Install
 
@@ -44,7 +58,7 @@ Start a new task after installation so the skill loads.
 
 ## What it does not do
 
-- It does not launch or call models.
+- The local engine does not call model providers. The main chat delegates through the native Codex or Claude Code tools.
 - It does not guarantee that a provider actually ran the model it claims. It verifies identity based on observed tool results, not provider assertions.
 - It does not dynamically benchmark models or guarantee every model in the registry is available on your account.
 - Compound Engineering is optional. The plugin works without it.
