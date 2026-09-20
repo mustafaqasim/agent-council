@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://acpl.internal/schemas/cyber-range/provider-dispatch-receipt-v2", "title": "ACPL Agent Council v2 protected provider dispatch receipt", "type": "object", "additionalProperties": false,
+  "required": ["receipt_type", "receipt_id", "receipt_sha256", "dispatch_id", "provider", "model_id", "selected_effort", "attested_effort", "context_id", "system_generated"],
+  "properties": {"receipt_type": {"const": "provider_dispatch"}, "receipt_id": {"type": "string", "minLength": 1}, "receipt_sha256": {"pattern": "^[a-f0-9]{64}$"}, "dispatch_id": {"type": "string", "minLength": 1}, "provider": {"type": "string", "minLength": 1}, "model_id": {"type": "string", "minLength": 1}, "selected_effort": {"enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]}, "attested_effort": {"enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]}, "context_id": {"type": "string", "minLength": 1}, "system_generated": {"const": true}}
+}

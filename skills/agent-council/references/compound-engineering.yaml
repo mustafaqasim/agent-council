@@ -1,0 +1,63 @@
+schema_version: "agent-council.compound-engineering-integration/v1"
+purpose: "Keep Council governance and Compound Engineering methods complementary."
+boundary:
+  council_owns:
+    - "Risk classification and route floor"
+    - "Model tier and effort selection"
+    - "Delegation identity, independence, and evidence requirements"
+    - "Final Council disposition"
+  compound_engineering_owns:
+    - "Requirements exploration and planning method"
+    - "Debugging and root-cause workflow"
+    - "Implementation loop and local verification"
+    - "Code review, delivery, and PR lifecycle when requested"
+  forbidden_overlap:
+    - "The Council does not recreate Compound Engineering planning, debugging, implementation, or review methods."
+    - "Compound Engineering does not classify Council routes, assign Council tiers, author protected Council records, pass Council gates, or close a Council case."
+    - "Do not invoke lfg inside an active Council case. Select the specific stage skill."
+    - "Use ce-work in mode:return-to-caller inside an active Council case so the Council retains the quality and shipping tail."
+mapping:
+  unclear_requirements: "ce-brainstorm or ce-plan"
+  implementation_ready_work: "ce-work"
+  defect_or_failing_behavior: "ce-debug"
+  independent_code_review: "ce-code-review"
+  simplify_settled_changes: "ce-simplify-code"
+  commit_only: "ce-commit"
+  requested_delivery: "ce-commit-push-pr"
+orchestration_lease:
+  rule: "Only one outer orchestrator may dispatch work at a time."
+  sequence:
+    - "Council records routing and any required design decision."
+    - "Council yields one bounded packet to one Compound Engineering skill."
+    - "Compound Engineering returns complete, blocked, or failed with evidence and yields control."
+    - "Council validates the return before another dispatch or gate."
+  forbidden_topology: "Council authority worker -> Compound Engineering orchestrator -> worker"
+evidence_handoff:
+  invocation_required:
+    - "case_id, cycle_id, candidate_id, candidate_sha256, route, and packet_id"
+    - "selected skill and mode:return-to-caller when implementation is requested"
+    - "scope paths, allowed writes, prohibited actions, and verification requirements"
+    - "orchestrator_owner: compound_engineering and council_reentry: denied"
+  return_required:
+    - "status, artifact paths, changed files, verification results, and coverage limits"
+    - "task identity, context identity, requested model, actual model, and fallback reason"
+  rules:
+    - "A Compound Engineering receipt may satisfy a Council gate only when it names the exact candidate, tests, result, model identity, task identity, and context identity required by that gate."
+    - "The Council must not rerun an equivalent completed method solely to produce different wording."
+    - "A Council model assignment never overrides Compound Engineering workspace, permission, commit, or shipping boundaries."
+  import_rules:
+    - "Recompute candidate and artifact hashes before importing evidence."
+    - "Reject stale candidates, stale cycles, mutable or missing evidence, mixed candidates, and scope escapes."
+    - "A Compound Engineering self-report never proves provider or tier identity. Capture native Council dispatch separately."
+    - "Only observed behavior becomes behavioral evidence. Workflow metadata remains metadata."
+recursion_prevention:
+  - "Council is the only outer model-routing owner for a Council case."
+  - "Compound Engineering skills may use their normal workers, but must not start a second Council for the same candidate and decision."
+  - "A nested task returns its evidence to the existing Council case."
+  - "An invocation carrying council_reentry: denied must not invoke Agent Council."
+  - "Council authority workers inspect or decide only and do not invoke Compound Engineering skills."
+  - "Candidate or cycle changes invalidate unconsumed handoffs and dispatch plans."
+unavailable:
+  - "If Compound Engineering is absent, Codex may use an equivalent native method and record that substitution."
+  - "If a required Council model tier is unavailable, Compound Engineering may prepare evidence but cannot advance the dependent Council gate."
+  - "Do not install Compound Engineering automatically or fabricate its receipts when it is absent."

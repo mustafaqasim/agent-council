@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://acpl.internal/schemas/cyber-range/agent-model-registry-v2",
+  "title": "ACPL Agent Council v2 versioned provider binding registry", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "registry_version", "registry_sha256", "reasoning", "provider_states", "bindings"],
+  "properties": {
+    "schema_version": {"const": "acpl.cyberrange.agent-model-registry/v2"}, "registry_version": {"type": "string", "pattern": "^v[0-9]+$"}, "registry_sha256": {"$ref": "#/$defs/sha256"},
+    "reasoning": {"type": "object", "additionalProperties": false, "required": ["default_effort"], "properties": {"default_effort": {"const": "high"}}},
+    "provider_states": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["council_status"], "properties": {"council_status": {"enum": ["qualified", "fail_closed_until_qualified"]}}}},
+    "bindings": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["binding_id", "provider", "model_id", "tier", "status", "binding_sha256"], "properties": {"binding_id": {"$ref": "#/$defs/id"}, "provider": {"type": "string", "minLength": 1}, "model_id": {"type": "string", "minLength": 1}, "tier": {"enum": ["ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence"]}, "status": {"enum": ["qualified", "candidate", "revoked", "hard_expired"]}, "binding_sha256": {"$ref": "#/$defs/sha256"}}}}
+  },
+  "$defs": {"id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{2,127}$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

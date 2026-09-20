@@ -1,0 +1,19 @@
+schema_version: "agent-council.project-profile/v1"
+profile_id: "default"
+description: "General software and knowledge-work governance profile."
+route_floors:
+  bounded_repair: "R1"
+  unexpected_failure: "R2"
+  unqualified_composition: "R2"
+  architecture_change: "R3"
+  shared_contract_change: "R3"
+  safety_boundary_change: "R3"
+  repeated_unresolved_failure: "R3"
+required_evidence:
+  R1: ["ultimate-routing", "implementation-verification", "operational-review", "ultimate-final-disposition"]
+  R2: ["ultimate-routing", "ultimate-design", "implementation-verification", "independent-review", "ultimate-final-disposition"]
+  R3: ["ultimate-routing", "ultimate-design", "implementation-verification", "fault-tests", "independent-review", "ultimate-final-disposition"]
+case_root: ".agent/council"
+compound_engineering:
+  integration: "enabled_when_available"
+  duplicate_gate_policy: "reuse_exact_candidate_receipts"
