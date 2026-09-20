@@ -1,7 +1,7 @@
 {
   "name": "agent-council",
   "version": "0.2.1",
-  "description": "Govern complex Codex work with risk-based model delegation and evidence gates.",
+  "description": "Govern complex engineering work with risk-based model delegation and evidence gates.",
   "author": {
     "name": "Mustafa Qasim"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Agent Council",
     "shortDescription": "Route work to the right model tier.",
-    "longDescription": "Agent Council adds reusable model-tier routing, independent review, evidence collection, and fail-closed completion gates to Codex projects.",
+    "longDescription": "Agent Council adds reusable model-tier routing, independent review, evidence collection, and fail-closed completion gates to your projects.",
     "developerName": "Mustafa Qasim",
     "category": "Productivity",
     "capabilities": [],
