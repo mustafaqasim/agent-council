@@ -2,7 +2,7 @@
 
 Agent Council is a Codex plugin for governing complex engineering work. It maps work to model tiers, records the planned delegation, requires independent review where the route demands it, and keeps local evidence linked to the exact candidate under review.
 
-It is independent of any lab, customer environment, network, or other plugin. The local runtime uses only the Python standard library.
+The local runtime uses only the Python standard library.
 
 ## What it does
 
@@ -20,7 +20,7 @@ It is independent of any lab, customer environment, network, or other plugin. Th
 
 ## Install from GitHub
 
-After this repository is published, add its marketplace and install the plugin:
+Add the marketplace and install the plugin:
 
 ```sh
 codex plugin marketplace add mustafaqasim/agent-council --ref main
