@@ -9,9 +9,12 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+ASSERTION_COUNT = 0
 
 
 def require(condition: bool, message: str) -> None:
+    global ASSERTION_COUNT
+    ASSERTION_COUNT += 1
     if not condition:
         raise AssertionError(message)
 
@@ -19,8 +22,10 @@ def require(condition: bool, message: str) -> None:
 def main() -> int:
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     claude_manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    marketplace = json.loads((ROOT.parents[1] / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-    readme = (ROOT.parents[1] / "README.md").read_text(encoding="utf-8")
+    repository_root = ROOT.parents[1]
+    marketplace_path = repository_root / ".claude-plugin" / "marketplace.json"
+    readme_path = repository_root / "README.md"
+    source_checkout = (repository_root / "plugins" / "agent-council").resolve() == ROOT
     skill = (ROOT / "skills" / "agent-council" / "SKILL.md").read_text(encoding="utf-8")
     adapters = (ROOT / "skills" / "agent-council" / "references" / "model-adapters.yaml").read_text(encoding="utf-8")
     integration = (ROOT / "skills" / "agent-council" / "references" / "compound-engineering.yaml").read_text(encoding="utf-8")
@@ -33,7 +38,10 @@ def main() -> int:
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
     require(manifest["version"] == claude_manifest["version"] == "0.5.0", "plugin manifest versions are not aligned")
-    require(marketplace["metadata"]["version"] == marketplace["plugins"][0]["version"] == manifest["version"], "marketplace version is not aligned")
+    if source_checkout:
+        marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
+        readme = readme_path.read_text(encoding="utf-8")
+        require(marketplace["metadata"]["version"] == marketplace["plugins"][0]["version"] == manifest["version"], "marketplace version is not aligned")
     require(isinstance(manifest["interface"]["defaultPrompt"], list) and all(isinstance(item, str) for item in manifest["interface"]["defaultPrompt"]), "default prompt must be a list of strings")
     require("name: agent-council" in skill, "skill identity mismatch")
     activation_classes = ("debugging", "implementation", "refactoring", "planning", "architecture", "integration", "code review", "research", "analysis", "strategy", "business planning", "document creation", "editorial review")
@@ -62,10 +70,11 @@ def main() -> int:
     require("Before each lightweight or governed delegation" in skill, "visible dispatch notice is missing")
     require("Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing." in adapters, "lightweight native dispatch is incorrectly case-bound")
     require("governed_case_required_receipt" in adapters, "governed dispatch receipt requirements are not scoped")
-    require("codex plugin marketplace add mustafaqasim/agent-council --ref main" in readme, "public GitHub marketplace install command is missing")
-    require("codex plugin add agent-council@agent-council" in readme, "public marketplace plugin selector is missing")
-    require("Do not install the repository root as a personal plugin." in readme, "repo-root installation warning is missing")
-    require(marketplace["plugins"][0]["source"] == "./plugins/agent-council", "marketplace source must resolve the packaged plugin directory")
+    if source_checkout:
+        require("codex plugin marketplace add mustafaqasim/agent-council --ref main" in readme, "public GitHub marketplace install command is missing")
+        require("codex plugin add agent-council@agent-council" in readme, "public marketplace plugin selector is missing")
+        require("Do not install the repository root as a personal plugin." in readme, "repo-root installation warning is missing")
+        require(marketplace["plugins"][0]["source"] == "./plugins/agent-council", "marketplace source must resolve the packaged plugin directory")
     require(all(item in adapters for item in ("ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence")), "cost classes are incomplete")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
     require("mode:return-to-caller" in integration, "CE return-to-caller boundary is missing")
@@ -95,7 +104,7 @@ def main() -> int:
         plan = json.loads(planned.stdout)
         require(plan["user_notice"]["message"].startswith("Council: gpt-6-astra/high (premium) assigned routing task because "), "dispatch plan did not emit the bound visible notice")
         require(plan["work_method"] == "native" and plan["orchestrator_owner"] == "council" and plan["council_reentry"] == "denied" and plan["execution_mode"] == "native", "native method contract is invalid")
-    print(json.dumps({"result": "passed", "assertions": 51}, sort_keys=True))
+    print(json.dumps({"result": "passed", "assertions": ASSERTION_COUNT, "source_checkout": source_checkout}, sort_keys=True))
     return 0
 
 
