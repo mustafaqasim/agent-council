@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agent-council",
+  "owner": {
+    "name": "Mustafa Qasim"
+  },
+  "metadata": {
+    "description": "Route work to the right model tier with independent review and evidence gates.",
+    "version": "0.3.1"
+  },
+  "plugins": [
+    {
+      "name": "agent-council",
+      "description": "Govern complex engineering work with risk-based model delegation and evidence gates.",
+      "version": "0.3.1",
+      "author": {
+        "name": "Mustafa Qasim"
+      },
+      "category": "productivity",
+      "source": "./plugins/agent-council"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 name: agent-council
-description: Govern complex Codex engineering work with risk-based model-tier delegation, independent review, evidence gates, and project-specific profiles. Use for defects, repairs, architecture changes, shared-contract changes, repeated failures, uncertain implementation, or high-consequence acceptance decisions. Excludes routine proven operations and simple read-only explanations.
+description: Govern complex engineering work with risk-based model-tier delegation, independent review, evidence gates, and project-specific profiles. Use for defects, repairs, architecture changes, shared-contract changes, repeated failures, uncertain implementation, or high-consequence acceptance decisions. Excludes routine proven operations and simple read-only explanations.
 ---
 
 # Agent Council

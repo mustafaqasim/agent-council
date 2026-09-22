@@ -50,8 +50,8 @@ codex plugin add agent-council@agent-council
 **Claude Code:**
 
 ```sh
-claude plugin marketplace add mustafaqasim/agent-council --ref main
-claude plugin add agent-council@agent-council
+claude plugin marketplace add mustafaqasim/agent-council
+claude plugin install agent-council@agent-council
 ```
 
 Start a new task after installation so the skill loads.
