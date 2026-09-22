@@ -6,13 +6,13 @@ registry:
   designation_receipt: "standards/model-qualifications/initial-codex-designation.v2.yaml"
   rules:
     - "Resolve a tier to an active registry binding only after a fast runtime availability and compatibility check."
-    - "Pin registry version and registry SHA-256 for the active case cycle."
-    - "Pin binding ID and binding SHA-256 for every dispatch."
+    - "For a governed case, pin registry version and registry SHA-256 for the active case cycle."
+    - "For a governed case, pin binding ID and binding SHA-256 for every dispatch."
     - "A registry review-due date warns only. Explicit hard expiry or revocation blocks a binding."
     - "Unknown or new models are candidates only and cannot receive a tier gate before qualification and plugin update."
     - "A local structural designation does not prove native provider provenance or satisfy a closure gate."
-    - "Each dispatch plan is an immutable single-use request bound to the current case, candidate, cycle, policy, registry, binding, model, effort, context, decision kind, and qualification run when applicable."
-    - "Candidate changes and cycle-only resumptions invalidate every unconsumed dispatch plan."
+    - "Each governed-case dispatch plan is an immutable single-use request bound to the current case, candidate, cycle, policy, registry, binding, model, effort, context, decision kind, and qualification run when applicable."
+    - "Candidate changes and cycle-only resumptions invalidate every unconsumed governed-case dispatch plan."
 
 common:
   user_notice:
@@ -27,7 +27,15 @@ common:
       - "Keep the reason to one sentence and state the observable routing factor."
       - "After completion, show the disposition and evidence produced."
       - "Do not expose private reasoning or internal deliberation."
-  required_receipt:
+  lightweight_dispatch:
+    - "Resolve the lowest qualified active binding that can complete the bounded task reliably."
+    - "When the preferred binding is unavailable, use an active same-tier fallback first. Use the next higher qualified tier only when the expected benefit still exceeds its cost; otherwise report the limitation and continue by direct execution."
+    - "Never substitute a lower tier that is unlikely to complete the task reliably."
+    - "Show the user notice, then use the platform's native delegation tool with the explicit registry model ID and effort."
+    - "Keep the returned task identity, model, context, disposition, and evidence visible in the active transcript."
+    - "Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing."
+    - "Escalate to governed-case dispatch before continuing if new evidence reveals a qualifying risk trigger."
+  governed_case_required_receipt:
     - "case_id, cycle_id, packet_id, policy_sha256, registry_version, registry_sha256, and prompt_sha256"
     - "binding_id, binding_sha256, requested_tier, effective_tier, model_id, reasoning, and adapter"
     - "capability snapshot, availability status, compatibility result, and fallback disposition"
@@ -39,7 +47,7 @@ common:
   rules:
     - "Unverified selection never satisfies an ultimate_intelligence gate."
     - "Only an active same-tier binding may be used as a same-tier fallback."
-    - "A higher-tier substitution requires a registry binding that explicitly permits it and a recorded reason."
+    - "For a governed gate, a higher-tier substitution requires a registry binding that explicitly permits it and a recorded reason. Lightweight routing may select an independently qualified higher tier under the lightweight fallback rule."
     - "A lower tier never substitutes for an ultimate_intelligence gate."
     - "Use clean context for independent review and forward tests."
     - "Require two fresh candidate-bound native forward-test receipts before operational promotion or affected acceptance closure."

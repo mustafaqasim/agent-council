@@ -1,6 +1,6 @@
 # Agent Council
 
-Use different AI models from one coding chat, without switching them by hand.
+Use different AI models from one chat, without switching them by hand.
 
 ![Agent Council routes each coding subtask to an appropriate model based on complexity, risk, and cost](assets/agent-council.png)
 
@@ -13,7 +13,9 @@ Agent Council lets your main Codex or Claude Code chat hand a subtask to the mod
 
 In Codex, that can mean Luna for routine work, Terra for implementation, Sol for review, and Astra for the hardest decisions.
 
-You stay in the same chat. The main agent decides when to delegate, starts the sub-agent with an explicit model, and brings the result back into the task.
+You stay in the same chat. The main agent decides when to work directly, when to delegate, which model tier fits each subtask, and when stronger governance is necessary.
+
+This applies beyond coding. Research, analysis, strategy, business planning, document work, implementation, and review can all contain subtasks with very different levels of difficulty.
 
 ## Why this exists
 
@@ -24,19 +26,27 @@ Manually changing models creates two kinds of waste:
 
 Then, once the hard part is over, you have to remember to switch back down. The repeated handoff breaks your flow and makes one task feel like several separate sessions.
 
-Agent Council moves that routing decision into the chat. It can escalate when the work becomes harder, use a cheaper worker for routine steps, and require a separate reviewer when the result needs an independent check.
+Agent Council moves that routing decision into the chat. It can escalate when the work becomes harder, use a cheaper worker for routine steps, and downshift again when the difficult part is complete. When the work carries material risk, it can also require a separate reviewer and evidence before completion.
 
 It does not read your remaining quota or predict cost. It routes from the task's complexity and risk.
 
 ## What happens during a task
 
-The main chat classifies the current piece of work:
+Agent Council first chooses one of three paths:
+
+- **Direct execution**: the request is too small or tightly coupled for delegation to save time or tokens.
+- **Lightweight routing**: bounded research, drafting, implementation, analysis, or review is delegated to the lowest qualified model tier. No case files or governance ceremony are created.
+- **Governed case**: a qualifying risk needs formal routing, independent review, and evidence gates.
+
+You see the routing decision and each delegated model before work begins. A substantive consulting-offer task, for example, can send source inventory to a worker model, structured offer design to a technical model, and final integration or challenge review to a stronger model.
+
+For governed work, the main chat classifies the current piece of work:
 
 - **R1**: a bounded fix with a known cause and narrow impact.
 - **R2**: an unexpected failure or uncertain composition.
 - **R3**: architecture, shared contracts, safety boundaries, or repeated unresolved failures.
 
-That route tells the chat which model tier and checks are required. The chat launches the sub-agents. Agent Council records the routing decision, checks the returned model identity and evidence links, and refuses to close the case when required checks are missing or stale.
+That route tells the chat which model tier and checks are required. Agent Council records the routing decision, checks returned model identity and evidence links, and refuses to close the case when required checks are missing or stale.
 
 The local engine uses only the Python standard library.
 
@@ -58,9 +68,19 @@ claude plugin install agent-council@agent-council
 
 Start a new task after installation so the skill loads.
 
+To update from the public repository:
+
+```sh
+codex plugin marketplace upgrade agent-council
+codex plugin add agent-council@agent-council
+```
+
+Do not install the repository root as a personal plugin. The public marketplace resolves the packaged plugin under `plugins/agent-council`.
+
 ## What it does not do
 
 - The local engine does not call model providers. The main chat delegates through the native Codex or Claude Code tools.
+- Implicit activation is best-effort. Codex and Claude Code decide whether a task matches the skill description.
 - It does not guarantee that a provider actually ran the model it claims. It verifies identity based on observed tool results, not provider assertions.
 - It does not dynamically benchmark models or guarantee every model in the registry is available on your account.
 - Compound Engineering is optional. The plugin works without it.

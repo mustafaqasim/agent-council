@@ -1,20 +1,20 @@
 {
   "name": "agent-council",
-  "version": "0.4.0",
-  "description": "Check whether non-trivial engineering work needs Agent Council model routing and evidence gates.",
+  "version": "0.5.0",
+  "description": "Route substantive work to cost-effective model tiers and add evidence gates when risk warrants them.",
   "author": {
     "name": "Mustafa Qasim"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Agent Council",
-    "shortDescription": "Check if complex work needs model-tier governance.",
-    "longDescription": "Agent Council first performs a read-only applicability check for non-trivial engineering work. It opens a full Council case only when a qualifying risk trigger applies, then adds reusable model-tier routing, independent review, evidence collection, and fail-closed completion gates.",
+    "shortDescription": "Route substantive work to the right model tier.",
+    "longDescription": "Agent Council routes bounded engineering, research, strategy, business, and document work to a cost-effective model tier. It keeps routine routing lightweight and opens a governed Council case only when qualifying risk requires independent review, evidence collection, and fail-closed completion gates.",
     "developerName": "Mustafa Qasim",
     "category": "Productivity",
     "capabilities": [],
     "defaultPrompt": [
-      "Use Agent Council to check this work for a qualifying risk trigger before opening a Council case."
+      "Use Agent Council to route this work cost-effectively and apply governance only when risk warrants it."
     ]
   }
 }
