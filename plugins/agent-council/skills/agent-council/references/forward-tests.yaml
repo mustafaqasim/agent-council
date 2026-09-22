@@ -88,3 +88,18 @@ scenarios:
     expected: ["Uses Compound Engineering only as an optional method-fit interoperability path", "Keeps Council routing and closure authority", "Uses mode:return-to-caller for an active Council handoff"]
     evidence_class: "fresh-chat selection evidence"
     coverage_limit: "Requires an installed plugin and an observed handoff; structural tests verify only the declared boundary."
+  - id: "GFT20"
+    request: "Use our existing CrowdStrike research to develop a consulting offering for the market."
+    expected: ["Performs the observable applicability check", "Selects lightweight routing because research and drafting are clearly separable substantive work", "Uses economical or standard tiers for bounded research and drafting", "Keeps synthesis and final delivery with the outer agent", "Creates no governed Council case unless new risk evidence appears"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "Selection, visible routing, and native model dispatch must be observed in a clean context."
+  - id: "GFT21"
+    request: "Correct one typo in this sentence."
+    expected: ["Allows ordinary abstention when implicit selection skips the trivial request", "Reports direct execution when Agent Council is explicitly invoked", "Creates no delegation, Council case, or receipt", "Avoids routing overhead for trivial work"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "Observe implicit abstention and explicit direct execution in separate fresh contexts."
+  - id: "GFT22"
+    request: "The preferred lightweight model tier is unavailable while drafting a bounded market summary."
+    expected: ["Uses an active same-tier fallback first", "Uses the next higher qualified tier only when the expected benefit still exceeds its cost", "Otherwise reports the limitation and continues by direct execution", "Does not silently choose an unreliable lower tier or open a governed case solely for availability"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "Structural wording can verify the fallback order; native availability handling requires observed execution."

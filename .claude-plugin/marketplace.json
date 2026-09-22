@@ -5,14 +5,14 @@
     "name": "Mustafa Qasim"
   },
   "metadata": {
-    "description": "Check whether non-trivial engineering work needs model-tier governance.",
-    "version": "0.4.0"
+    "description": "Route substantive work to cost-effective model tiers and add governance when risk warrants it.",
+    "version": "0.5.0"
   },
   "plugins": [
     {
       "name": "agent-council",
-      "description": "Check whether non-trivial engineering work needs model-tier governance.",
-      "version": "0.4.0",
+      "description": "Route substantive work to cost-effective model tiers and add governance when risk warrants it.",
+      "version": "0.5.0",
       "author": {
         "name": "Mustafa Qasim"
       },

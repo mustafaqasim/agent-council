@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ EVALUATOR_ASSURANCE_CASES = frozenset({"authority_dispatch_output_ref_missing", 
 # Each group below executes a distinct suite.  These are local structural
 # contracts, not evidence that a native provider adapter has been qualified.
 GROUPS = ("schema", "lifecycle", "stages", "routes", "provider", "authoring", "security", "dispatch-contracts")
+FIXTURE_NOW = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def canonical(value: Any) -> bytes:
@@ -77,7 +79,7 @@ def reseal_dispatch_payload(payload: dict[str, Any]) -> None:
 
 
 def event(case_id: str, cycle_id: str, candidate_id: str, event_id: str, record_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-    record = {"record_type": record_type, "event_id": event_id, "recorded_at": "2026-09-20T00:00:00Z", "identity": {"case_id": case_id, "policy_bundle_sha256": token(case_id + "-policy"), "registry_version": "v2", "registry_sha256": registry(case_id)["registry_sha256"]}, "candidate_id": candidate_id, "cycle_id": cycle_id, "payload": payload}
+    record = {"record_type": record_type, "event_id": event_id, "recorded_at": FIXTURE_NOW, "identity": {"case_id": case_id, "policy_bundle_sha256": token(case_id + "-policy"), "registry_version": "v2", "registry_sha256": registry(case_id)["registry_sha256"]}, "candidate_id": candidate_id, "cycle_id": cycle_id, "payload": payload}
     record["event_sha256"] = digest(record)
     return record
 
@@ -85,7 +87,7 @@ def event(case_id: str, cycle_id: str, candidate_id: str, event_id: str, record_
 def protected_dispatch(case_id: str, cycle_id: str, candidate_id: str, event_id: str, role: str, decision_kind: str, context_id: str, task_id: str, disposition: str = "approved", qualification_run_id: str | None = None) -> dict[str, Any]:
     selected_binding = binding(case_id, role)
     binding_id = selected_binding["binding_id"]
-    capability_receipt = {"receipt_type": "provider_capability", "receipt_id": f"capability-{context_id}", "provider": "codex", "observed_at": "2026-09-20T00:00:00Z", "context_id": context_id, "models": [selected_binding["model_id"]], "efforts": ["high"]}
+    capability_receipt = {"receipt_type": "provider_capability", "receipt_id": f"capability-{context_id}", "provider": "codex", "observed_at": FIXTURE_NOW, "context_id": context_id, "models": [selected_binding["model_id"]], "efforts": ["high"]}
     capability_receipt["receipt_sha256"] = digest(capability_receipt)
     dispatch_receipt = {"receipt_type": "provider_dispatch", "receipt_id": f"dispatch-{event_id}", "dispatch_id": task_id, "provider": "codex", "model_id": selected_binding["model_id"], "selected_effort": "high", "attested_effort": "high", "context_id": context_id, "system_generated": True}
     dispatch_receipt["receipt_sha256"] = digest(dispatch_receipt)
@@ -105,7 +107,7 @@ def protected_dispatch(case_id: str, cycle_id: str, candidate_id: str, event_id:
         "capability_context_id": context_id,
         "capability_models": [selected_binding["model_id"]],
         "capability_efforts": ["high"],
-        "capability_observed_at": "2026-09-20T00:00:00Z",
+        "capability_observed_at": FIXTURE_NOW,
         "platform_task_id": task_id,
         "platform_context_id": context_id,
         "platform_output_ref": f"evidence/{task_id}.json",
@@ -138,7 +140,7 @@ def base_case(case_name: str, root: Path) -> dict[str, Any]:
     candidate_id = f"candidate-{candidate_sha256[:24]}"
     model_id = "qualified-technical_tactical_intelligence-model"
     technical_binding = binding(case_id, "technical_tactical_intelligence")
-    capability = {"receipt_type": "provider_capability", "receipt_id": "capability-current", "provider": "codex", "observed_at": "2026-09-20T00:00:00Z", "context_id": "context-current", "models": [model_id], "efforts": ["high", "ultra"]}
+    capability = {"receipt_type": "provider_capability", "receipt_id": "capability-current", "provider": "codex", "observed_at": FIXTURE_NOW, "context_id": "context-current", "models": [model_id], "efforts": ["high", "ultra"]}
     capability["receipt_sha256"] = digest(capability)
     dispatch = {"receipt_type": "provider_dispatch", "receipt_id": "dispatch-current", "dispatch_id": "task-technical", "provider": "codex", "model_id": model_id, "selected_effort": "high", "attested_effort": "high", "context_id": "context-current", "system_generated": True}
     dispatch["receipt_sha256"] = digest(dispatch)
