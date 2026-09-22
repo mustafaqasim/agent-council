@@ -2,6 +2,8 @@
 
 Use different AI models from one coding chat, without switching them by hand.
 
+![Agent Council routes each coding subtask to an appropriate model based on complexity, risk, and cost](assets/agent-council.png)
+
 Agent Council lets your main Codex or Claude Code chat hand a subtask to the model tier that fits the work:
 
 - A fast, economical model for routine checks and evidence gathering.
