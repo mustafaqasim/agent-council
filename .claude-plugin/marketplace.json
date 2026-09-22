@@ -5,14 +5,14 @@
     "name": "Mustafa Qasim"
   },
   "metadata": {
-    "description": "Route work to the right model tier with independent review and evidence gates.",
-    "version": "0.3.1"
+    "description": "Check whether non-trivial engineering work needs model-tier governance.",
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "agent-council",
-      "description": "Govern complex engineering work with risk-based model delegation and evidence gates.",
-      "version": "0.3.1",
+      "description": "Check whether non-trivial engineering work needs model-tier governance.",
+      "version": "0.4.0",
       "author": {
         "name": "Mustafa Qasim"
       },

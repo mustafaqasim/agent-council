@@ -1,5 +1,10 @@
 schema_version: "agent-council.compound-engineering-integration/v1"
-purpose: "Keep Council governance and Compound Engineering methods complementary."
+purpose: "Keep Council governance and Compound Engineering methods complementary through optional interoperability."
+native_standalone:
+  primary_path: "Native standalone workflow is primary for Council work."
+  ce_optionality: "Compound Engineering is an optional interoperability path when installed and method-fit."
+  never_required: "Compound Engineering is not a required dependency, command, hook, skill, installation check, runtime assumption, or gate."
+  ce_absent: "If Compound Engineering is absent, continue with the native standalone workflow and record that no Compound Engineering receipt exists."
 boundary:
   council_owns:
     - "Risk classification and route floor"
@@ -58,6 +63,6 @@ recursion_prevention:
   - "Council authority workers inspect or decide only and do not invoke Compound Engineering skills."
   - "Candidate or cycle changes invalidate unconsumed handoffs and dispatch plans."
 unavailable:
-  - "If Compound Engineering is absent, the outer agent may use an equivalent native method and record that substitution."
+  - "If Compound Engineering is absent, continue with the native standalone workflow; do not hold a Council gate or install Compound Engineering."
   - "If a required Council model tier is unavailable, Compound Engineering may prepare evidence but cannot advance the dependent Council gate."
   - "Do not install Compound Engineering automatically or fabricate its receipts when it is absent."

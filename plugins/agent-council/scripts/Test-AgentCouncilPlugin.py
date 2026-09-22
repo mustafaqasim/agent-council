@@ -18,19 +18,52 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> int:
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    claude_manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    marketplace = json.loads((ROOT.parents[1] / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     skill = (ROOT / "skills" / "agent-council" / "SKILL.md").read_text(encoding="utf-8")
     adapters = (ROOT / "skills" / "agent-council" / "references" / "model-adapters.yaml").read_text(encoding="utf-8")
     integration = (ROOT / "skills" / "agent-council" / "references" / "compound-engineering.yaml").read_text(encoding="utf-8")
+    forward_tests = (ROOT / "skills" / "agent-council" / "references" / "forward-tests.yaml").read_text(encoding="utf-8")
+    openai_agent = (ROOT / "skills" / "agent-council" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    claude_agent = (ROOT / "skills" / "agent-council" / "agents" / "claude-code.yaml").read_text(encoding="utf-8")
     profile = (ROOT / "profiles" / "default.yaml").read_text(encoding="utf-8")
     runtime = ROOT / "scripts" / "core" / "agent-council" / "0.2.0" / "Invoke-AgentCouncil.py"
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
+    require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
+    require(manifest["version"] == claude_manifest["version"] == "0.4.0", "plugin manifest versions are not aligned")
+    require(marketplace["metadata"]["version"] == marketplace["plugins"][0]["version"] == manifest["version"], "marketplace version is not aligned")
     require(isinstance(manifest["interface"]["defaultPrompt"], list) and all(isinstance(item, str) for item in manifest["interface"]["defaultPrompt"]), "default prompt must be a list of strings")
     require("name: agent-council" in skill, "skill identity mismatch")
+    activation_classes = ("debugging", "implementation", "refactoring", "planning", "architecture", "integration", "code review")
+    require(all(item in skill for item in activation_classes), "skill omits a substantive engineering activation class")
+    require("read-only applicability check" in skill, "skill lacks the first-stage applicability check")
+    require("Explicit invocation guarantees the applicability check, not automatic case creation." in skill, "explicit invocation contract is incomplete")
+    require("continue the normal workflow without a Council case, Council receipts, or Council-governed delegation" in skill, "no-case continuation contract is missing")
+    require("Reconsider only when material new evidence changes risk." in skill, "risk reconsideration boundary is missing")
+    require("council_reentry: denied" in skill and "do not invoke Agent Council" in skill, "nested Council reentry protection is missing")
+    require("Native standalone workflow is primary" in skill, "native standalone path is not primary")
+    require("optional interoperability path" in skill, "Compound Engineering optionality is unclear")
+    require("formatting-only changes" in skill and "deterministic checks using already-qualified components" in skill, "explicit negative activation cases are missing")
+    selection_text = "Check whether non-trivial engineering work needs Agent Council model routing and evidence gates."
+    selection_prompt = "Use $agent-council to check this work for a qualifying risk trigger before opening a Council case."
+    require(manifest["description"] == selection_text and claude_manifest["description"] == selection_text, "plugin manifest selection metadata is not aligned")
+    require(openai_agent == claude_agent, "Codex and Claude agent metadata is not aligned")
+    require('short_description: "Check if complex work needs model-tier governance"' in openai_agent, "agent selection metadata is not concise")
+    require(f'default_prompt: "{selection_prompt}"' in openai_agent, "agent applicability prompt is incomplete")
+    require(25 <= len(manifest["interface"]["shortDescription"].rstrip(".")) <= 64, "Codex short description must be 25 to 64 characters")
+    require(manifest["interface"]["defaultPrompt"] == [selection_prompt.replace("$agent-council", "Agent Council")], "plugin applicability prompt is incomplete")
+    require("interface" not in claude_manifest, "Claude manifest contains unsupported Codex interface metadata")
     require("Before each delegation" in skill, "visible dispatch notice is missing")
     require(all(item in adapters for item in ("ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence")), "cost classes are incomplete")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
     require("mode:return-to-caller" in integration, "CE return-to-caller boundary is missing")
+    require("Native standalone workflow is primary" in integration, "CE integration lacks a native standalone path")
+    require("optional interoperability path" in integration, "CE integration is not explicitly optional")
+    require("not a required dependency, command, hook, skill, installation check, runtime assumption, or gate" in integration, "CE absence can still appear to block a Council gate")
+    require("continue with the native standalone workflow" in integration, "CE-absent operation is not explicit")
+    require("structural test" in forward_tests and "fresh-chat selection evidence" in forward_tests, "forward tests do not distinguish structural and fresh-chat evidence")
+    require(all(item in forward_tests for item in ("debugging", "routine refactor", "council_reentry: denied", "Compound Engineering is absent")), "forward tests lack activation, negative, nested, or standalone scenarios")
     require('profile_id: "default"' in profile and 'architecture_change: "R3"' in profile, "default profile route floor is invalid")
     require('semantic_policy: "outer_agent_only"' in profile and 'runtime_snapshot: "pinned_hash_only"' in profile, "default profile enforcement boundary is invalid")
 
@@ -51,7 +84,7 @@ def main() -> int:
         plan = json.loads(planned.stdout)
         require(plan["user_notice"]["message"].startswith("Council: gpt-6-astra/high (premium) assigned routing task because "), "dispatch plan did not emit the bound visible notice")
         require(plan["work_method"] == "native" and plan["orchestrator_owner"] == "council" and plan["council_reentry"] == "denied" and plan["execution_mode"] == "native", "native method contract is invalid")
-    print(json.dumps({"result": "passed", "assertions": 13}, sort_keys=True))
+    print(json.dumps({"result": "passed", "assertions": 41}, sort_keys=True))
     return 0
 
 

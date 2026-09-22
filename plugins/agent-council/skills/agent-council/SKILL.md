@@ -1,6 +1,6 @@
 ---
 name: agent-council
-description: Govern complex engineering work with risk-based model-tier delegation, independent review, evidence gates, and project-specific profiles. Use for defects, repairs, architecture changes, shared-contract changes, repeated failures, uncertain implementation, or high-consequence acceptance decisions. Excludes routine proven operations and simple read-only explanations.
+description: Use before non-trivial engineering work such as debugging, implementation, refactoring, planning, architecture, integration, or code review. Check whether Council governance is warranted; open a case only for a qualifying risk trigger. Skip routine checks, formatting-only edits, and simple explanations.
 ---
 
 # Agent Council
@@ -11,7 +11,13 @@ Preserve the user's authority boundary. Diagnosis does not authorize implementat
 
 ## Activate
 
-Open a Council case when work includes an asserted automation repair, unexpected failure, repeated failure without new evidence, architecture or shared-contract change, unqualified capability composition, safety-boundary change, or acceptance-gate change. Do not open a full Council case for read-only status, formatting-only changes, expected refusals, healthy routine operations, or deterministic checks using already-qualified components.
+First perform a cheap, read-only applicability check before substantive non-trivial engineering work, including debugging, implementation, refactoring, planning, architecture, integration, or code review. The check classifies risk and does not create files, receipts, or delegations. If the active task carries `council_reentry: denied`, do not invoke Agent Council or open a nested case; return evidence to the existing Council case.
+
+Explicit invocation guarantees the applicability check, not automatic case creation.
+
+Open a full Council case only when an existing qualifying activation class applies: an asserted automation repair, unexpected failure, repeated failure without new evidence, architecture or shared-contract change, unqualified capability composition, safety-boundary change, or acceptance-gate change. Do not open a full Council case for read-only status, formatting-only changes, expected refusals, healthy routine operations, routine refactors with bounded impact, or deterministic checks using already-qualified components.
+
+When selected but no qualifying activation class applies, continue the normal workflow without a Council case, Council receipts, or Council-governed delegation. Reconsider only when material new evidence changes risk.
 
 Classify the route:
 
@@ -40,7 +46,7 @@ For model dispatch or availability, read [model adapters](references/model-adapt
 
 Read [project profiles](references/project-profiles.yaml) when a repository supplies `.agent-council/profile.yaml` or when a packaged profile applies. The outer agent selects and interprets one explicit profile. The local runtime pins the packaged default profile hash only. It does not dynamically load, merge, inherit, or semantically enforce repository profiles. Hold the affected route if profile selection or inheritance is unsupported or ambiguous.
 
-Read [Compound Engineering integration](references/compound-engineering.yaml) when that plugin is available. The Council decides who performs work and what evidence is required. Compound Engineering defines how planning, debugging, implementation, review, and shipping are performed. Do not duplicate a completed Compound Engineering gate when its receipt satisfies the Council evidence contract.
+Native standalone workflow is primary. Read [Compound Engineering integration](references/compound-engineering.yaml) only when that plugin is available and its method fits the work. It is an optional interoperability path, never an activation prerequisite or a dependency for normal Council operation. The Council decides who performs work and what evidence is required. When used, Compound Engineering can define how planning, debugging, implementation, review, and shipping are performed. Do not duplicate a completed Compound Engineering gate when its receipt satisfies the Council evidence contract.
 
 ## Enforce
 
@@ -50,4 +56,4 @@ The engine never launches models and never grants operational authority. The out
 
 Local receipts provide `structural_only` assurance. Provider execution and real-world acceptance remain responsibilities of the outer agent task and its observed tool results.
 
-If the required model tier or Compound Engineering skill is unavailable, record the limitation and hold only the dependent gate. Do not silently substitute a lower tier or invent a receipt.
+If a required Council model tier is unavailable, record the limitation and hold only the dependent Council gate. If Compound Engineering is unavailable, continue with an equivalent native standalone method and record that no Compound Engineering receipt exists. Do not silently substitute a lower tier or invent a receipt.

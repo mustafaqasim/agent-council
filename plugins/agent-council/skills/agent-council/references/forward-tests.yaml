@@ -1,11 +1,15 @@
 schema_version: "agent-council.forward-tests/v1"
-purpose: "Independent behavioral tests for project-neutral Council routing, delegation, evidence, and closure."
+purpose: "Independent behavioral tests for project-neutral Council selection, routing, delegation, evidence, and closure."
 requirements:
   - "Use isolated local fixtures and fresh native contexts."
   - "Withhold the intended route and answer from evaluators."
   - "Capture the actual model, effort, task identity, context identity, candidate hash, and output reference."
   - "Mocked receipts test structure only and never prove native delegation."
   - "Run native qualification twice against identical candidate bytes before operational promotion."
+evidence_classes:
+  structural_tests: "A structural test verifies packaged wording, metadata alignment, and immutable runtime contracts. It does not prove a fresh chat selected the skill."
+  fresh_chat_selection_evidence: "Fresh-chat selection evidence requires an observed clean context, the original paraphrased request, the selected-skill result, and a recorded abstention or applicability outcome."
+  reporting_rule: "Report structural coverage and fresh-chat selection evidence separately; never present one as proof of the other."
 scenarios:
   - id: "GFT01"
     request: "Repair a narrow automation defect with an established cause."
@@ -47,3 +51,40 @@ scenarios:
   - id: "GFT12"
     request: "Invoke the Council from a project with no local profile."
     expected: ["Loads the packaged default profile", "Does not inherit unrelated project rules", "Keeps external action authority unchanged"]
+  - id: "GFT13"
+    request: "The payment deployment started failing after yesterday's automation change. Diagnose the failure and repair it without repeating the last unsuccessful fix."
+    expected: ["Performs the read-only applicability check", "Recognizes debugging and repeated-failure risk", "Opens a qualifying Council case at the applicable route floor"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "This is a forward-test scenario, not evidence that a fresh chat has already selected the skill."
+  - id: "GFT14"
+    request: "Plan and implement a replacement for the shared tenant authorization contract used by the API, worker, and CLI, then review the integration boundary."
+    expected: ["Performs the read-only applicability check", "Recognizes planning, implementation, architecture, integration, and code review as substantive task classes", "Routes shared-contract work at R3"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "Selection must be observed in a clean context; structural wording checks alone are insufficient."
+  - id: "GFT15"
+    request: "Run the existing deterministic formatter and make a routine refactor in one helper with passing tests and no shared callers."
+    expected: ["Performs no full Council case", "Records the routine-operation exclusion when applicable", "Continues normal workflow without a Council case, Council receipts, or Council-governed delegation"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "A structural test can verify the exclusion wording but cannot prove fresh-chat abstention."
+  - id: "GFT16"
+    request: "Explain the current CI status and formatting-only diff; do not change anything."
+    expected: ["Treats read-only status and formatting-only work as explicit negative cases", "Does not open a full Council case", "Preserves normal authorization boundaries"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "Requires an observed clean-context selection result to count as behavioral evidence."
+  - id: "GFT17"
+    request: "council_reentry: denied. Return the test evidence from this nested implementation task to the existing Council case."
+    expected: ["Does not invoke Agent Council", "Does not create a nested case, receipt, or delegation", "Returns evidence to the existing Council case"]
+    structural_contract: "skills/agent-council/SKILL.md::Activate and references/compound-engineering.yaml::recursion_prevention"
+    evidence_class: "structural test"
+    coverage_limit: "Verifies the declared reentry boundary only; platform-level enforcement requires observed execution."
+  - id: "GFT18"
+    request: "Compound Engineering is absent. Investigate a shared-contract architecture change using the native Council workflow."
+    expected: ["Performs the read-only applicability check", "Uses the native standalone workflow without Compound Engineering", "Does not require installation, a command, hook, runtime assumption, or gate from Compound Engineering"]
+    structural_contract: "skills/agent-council/references/compound-engineering.yaml::native_standalone"
+    evidence_class: "structural test"
+    coverage_limit: "Verifies optionality wording and the documented fallback. Fresh-chat selection and native execution require separate observed evidence."
+  - id: "GFT19"
+    request: "Use installed Compound Engineering to debug the failing integration, but preserve Council route and evidence authority."
+    expected: ["Uses Compound Engineering only as an optional method-fit interoperability path", "Keeps Council routing and closure authority", "Uses mode:return-to-caller for an active Council handoff"]
+    evidence_class: "fresh-chat selection evidence"
+    coverage_limit: "Requires an installed plugin and an observed handoff; structural tests verify only the declared boundary."

@@ -1,7 +1,7 @@
 {
   "name": "agent-council",
-  "version": "0.3.1",
-  "description": "Govern complex engineering work with risk-based model delegation and evidence gates.",
+  "version": "0.4.0",
+  "description": "Check whether non-trivial engineering work needs Agent Council model routing and evidence gates.",
   "author": {
     "name": "Mustafa Qasim"
   }

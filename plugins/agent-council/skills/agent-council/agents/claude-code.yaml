@@ -1,6 +1,6 @@
 interface:
   display_name: "Agent Council"
-  short_description: "Route work to the right model tier"
-  default_prompt: "Use $agent-council to govern this work with appropriate model delegation and evidence gates."
+  short_description: "Check if complex work needs model-tier governance"
+  default_prompt: "Use $agent-council to check this work for a qualifying risk trigger before opening a Council case."
 policy:
   allow_implicit_invocation: true
