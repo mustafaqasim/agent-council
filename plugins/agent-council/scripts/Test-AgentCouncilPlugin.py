@@ -33,14 +33,19 @@ def main() -> int:
     openai_agent = (ROOT / "skills" / "agent-council" / "agents" / "openai.yaml").read_text(encoding="utf-8")
     claude_agent = (ROOT / "skills" / "agent-council" / "agents" / "claude-code.yaml").read_text(encoding="utf-8")
     profile = (ROOT / "profiles" / "default.yaml").read_text(encoding="utf-8")
+    hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    routing_hook = (ROOT / "hooks" / "agent-council-routing.sh").read_text(encoding="utf-8")
+    update_manager = ROOT / "scripts" / "Manage-AgentCouncilUpdates.py"
+    update_tests = ROOT / "scripts" / "Test-AgentCouncilUpdates.py"
     runtime = ROOT / "scripts" / "core" / "agent-council" / "0.2.0" / "Invoke-AgentCouncil.py"
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
-    require(manifest["version"] == claude_manifest["version"] == "0.6.0", "plugin manifest versions are not aligned")
+    require(manifest["version"] == claude_manifest["version"] == "0.7.0", "plugin manifest versions are not aligned")
     if source_checkout:
         marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")
+        security = (repository_root / "SECURITY.md").read_text(encoding="utf-8")
         require(marketplace["metadata"]["version"] == marketplace["plugins"][0]["version"] == manifest["version"], "marketplace version is not aligned")
     require(isinstance(manifest["interface"]["defaultPrompt"], list) and all(isinstance(item, str) for item in manifest["interface"]["defaultPrompt"]), "default prompt must be a list of strings")
     require("name: agent-council" in skill, "skill identity mismatch")
@@ -67,6 +72,14 @@ def main() -> int:
     require(25 <= len(manifest["interface"]["shortDescription"].rstrip(".")) <= 64, "Codex short description must be 25 to 64 characters")
     require(manifest["interface"]["defaultPrompt"] == [selection_prompt.replace("$agent-council", "Agent Council")], "plugin applicability prompt is incomplete")
     require("interface" not in claude_manifest, "Claude manifest contains unsupported Codex interface metadata")
+    session_commands = [item["command"] for group in hooks["hooks"]["SessionStart"] for item in group["hooks"]]
+    prompt_commands = [item["command"] for group in hooks["hooks"]["UserPromptSubmit"] for item in group["hooks"]]
+    update_command = "Manage-AgentCouncilUpdates.py\" hook --event"
+    require(any(update_command in command and "SessionStart" in command for command in session_commands), "daily update checker is missing from SessionStart")
+    require(any(update_command in command and "UserPromptSubmit" in command for command in prompt_commands), "update preference handler is missing from UserPromptSubmit")
+    require(update_manager.is_file() and update_tests.is_file(), "update manager or its behavioral test is missing")
+    require("PLUGIN_ROOT" in " ".join(session_commands + prompt_commands), "Codex plugin root is not passed to the update manager")
+    require(chr(0x2014) not in routing_hook, "routing hook contains a prohibited em dash")
     require("Before each lightweight or governed delegation" in skill, "visible dispatch notice is missing")
     require("Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing." in adapters, "lightweight native dispatch is incorrectly case-bound")
     require("governed_case_required_receipt" in adapters, "governed dispatch receipt requirements are not scoped")
@@ -74,6 +87,8 @@ def main() -> int:
         require("codex plugin marketplace add mustafaqasim/agent-council --ref main" in readme, "public GitHub marketplace install command is missing")
         require("codex plugin add agent-council@agent-council" in readme, "public marketplace plugin selector is missing")
         require("Do not install the repository root as a personal plugin." in readme, "repo-root installation warning is missing")
+        require(all(command in readme for command in ("agent-council update now", "agent-council auto-update on", "agent-council auto-update off")), "documented update preference commands are incomplete")
+        require("Automatic updates are disabled by default." in security, "security policy does not state the auto-update default")
         require(marketplace["plugins"][0]["source"] == "./plugins/agent-council", "marketplace source must resolve the packaged plugin directory")
     require(all(item in adapters for item in ("ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence")), "cost classes are incomplete")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
@@ -89,6 +104,8 @@ def main() -> int:
 
     test = subprocess.run([sys.executable, str(runtime), "init-case", "--help"], text=True, capture_output=True, check=False)
     require(test.returncode == 0 and "--case-root" in test.stdout, "runtime CLI is unavailable")
+    update_test = subprocess.run([sys.executable, str(update_tests)], text=True, capture_output=True, check=False)
+    require(update_test.returncode == 0, f"update manager tests failed: {update_test.stdout[-500:]} {update_test.stderr[-500:]}")
     with tempfile.TemporaryDirectory(prefix="agent-council-plugin-") as temporary:
         project_root = Path(temporary)
         case_root = Path(temporary) / "case"

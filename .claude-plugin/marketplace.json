@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Route substantive work to cost-effective model tiers and add governance when risk warrants it.",
-    "version": "0.6.0"
+    "version": "0.7.0"
   },
   "plugins": [
     {
       "name": "agent-council",
       "description": "Route substantive work to cost-effective model tiers and add governance when risk warrants it.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "author": {
         "name": "Mustafa Qasim"
       },
