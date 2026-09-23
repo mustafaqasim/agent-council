@@ -8,6 +8,12 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agent-council-routing.sh\" SessionStart",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/Manage-AgentCouncilUpdates.py\" hook --event SessionStart",
+            "timeout": 60,
+            "statusMessage": "Checking for Agent Council updates"
           }
         ]
       }
@@ -19,6 +25,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agent-council-routing.sh\" UserPromptSubmit",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/Manage-AgentCouncilUpdates.py\" hook --event UserPromptSubmit",
+            "timeout": 60
           }
         ]
       }

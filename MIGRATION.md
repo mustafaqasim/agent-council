@@ -1,10 +1,16 @@
 # Migration
 
+## Version 0.7.0
+
+Version 0.7.0 adds a bounded daily update check for trusted local Codex installations. Notification is the default. Automatic installation remains off until the user sends the exact `agent-council auto-update on` instruction and the preference is stored in the plugin data directory.
+
+Updates are installed through the fixed public Agent Council marketplace and apply only to a new task. Claude Code keeps its existing manual plugin-manager update path. Existing routing and case records require no migration.
+
 ## Version 0.6.0
 
 Version 0.6.0 adds automatic activation on Claude Code through packaged session and prompt hooks, so the routing check runs before the agent selects a domain skill. Agent Council now behaves as a layer above other skills rather than a peer option that a stronger domain skill could bypass.
 
-On Codex and in cloud or web sessions there is no plugin auto-hook. Add the routing directive to your `AGENTS.md` as the universal fallback; see `plugins/agent-council/codex/routing-directive.md`. The `agent-council` skill remains the single source of truth for the routing rules in every case.
+At the time of the v0.6.0 release, Codex activation used the `AGENTS.md` routing directive. Version 0.7.0 adds packaged hooks for trusted local Codex installations. Cloud and web sessions still use the directive; see `plugins/agent-council/codex/routing-directive.md`. The `agent-council` skill remains the single source of truth for the routing rules in every case.
 
 Restart or start a new session after updating so the hooks load.
 
