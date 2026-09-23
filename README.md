@@ -30,6 +30,16 @@ Agent Council moves that routing decision into the chat. It can escalate when th
 
 It does not read your remaining quota or predict cost. It routes from the task's complexity and risk.
 
+## Demo Screenshots
+
+Searching for cheapest Microsoft Surface deals in a **Sol High** session delegate the work to cheaper **Terra Medium** sub-agents, keeping Sol for synthesis and validation.
+<img width="574" height="1280" alt="image" src="https://github.com/user-attachments/assets/f09275ea-31a5-4be1-b1ef-ad0081e06f6b" />
+
+
+When it doesn't make sense to delegate, it doesn't force.
+<img width="1092" height="366" alt="Recording 2026-09-23 at 22 39 40@2x" src="https://github.com/user-attachments/assets/36512129-e21a-482d-aa2a-73b4a1ba0352" />
+
+
 ## What happens during a task
 
 Agent Council first chooses one of three paths:
