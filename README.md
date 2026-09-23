@@ -77,10 +77,20 @@ codex plugin add agent-council@agent-council
 
 Do not install the repository root as a personal plugin. The public marketplace resolves the packaged plugin under `plugins/agent-council`.
 
+## Activation
+
+Agent Council is a layer that sits above your other skills, not an alternative you pick instead of them. A domain skill (lab-building, planning, brainstorming, code review) still does the work; Agent Council decides which model tier should make the hard calls and whether governance is required.
+
+- **Claude Code:** activation is automatic. The plugin ships session and prompt hooks (`hooks/hooks.json`) that run the routing check before the agent selects a skill, so a strong domain skill no longer bypasses it. Restart or start a new session after installing so the hooks load.
+- **Codex:** add the routing directive to your `AGENTS.md` (the universal fallback, works in cloud sessions too), and optionally add a local `SessionStart` hook for enforcement parity. See [codex/routing-directive.md](plugins/agent-council/codex/routing-directive.md).
+- **Cloud and web sessions:** hooks do not run there. Use the `AGENTS.md` directive, which is persistent context loaded on every task.
+
+You can always invoke it explicitly with `/agent-council` (Claude Code) to guarantee the check.
+
 ## What it does not do
 
 - The local engine does not call model providers. The main chat delegates through the native Codex or Claude Code tools.
-- Implicit activation is best-effort. Codex and Claude Code decide whether a task matches the skill description.
+- On Claude Code, packaged hooks make activation reliable locally. On Codex and in cloud/web sessions there is no plugin auto-hook, so activation there relies on the `AGENTS.md` directive and remains best-effort.
 - It does not guarantee that a provider actually ran the model it claims. It verifies identity based on observed tool results, not provider assertions.
 - It does not dynamically benchmark models or guarantee every model in the registry is available on your account.
 - Compound Engineering is optional. The plugin works without it.
