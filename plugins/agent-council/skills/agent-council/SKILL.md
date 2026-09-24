@@ -46,6 +46,8 @@ Open a full Council case only when an existing qualifying activation class appli
 
 Read-only architecture assessment, status, diagnosis, formatting-only changes, expected refusals, healthy routine operations, routine refactors with bounded impact, and deterministic checks using already-qualified components are not governed just because they mention architecture, failure, or a repair. Implementing an architecture change is R3. A known-cause, reversible ordinary local repair with no automation, lifecycle, updater, authority, shared-contract, safety, acceptance, or repeated-failure impact is direct or lightweight. Known cause, reversibility, and line count do not defeat a qualifying trigger: an asserted automation repair is R1 unless a higher route applies, and lifecycle, updater, authority, shared-contract, safety, acceptance, or qualification triggers take their applicable governed route.
 
+When repeated unresolved failure activates R3, restart diagnosis by separating the observed symptom from the hypothesized cause. Do not repeat the same repair action without materially new evidence. When routine deterministic work is excluded from a governed case, record the ordinary-operation exclusion where the workflow requires it and preserve the user's existing authorization boundary.
+
 When no qualifying activation class applies, use direct execution or lightweight routing without a Council case or Council receipts. Reconsider formal governance only when material new evidence changes risk. Reassess only when material evidence changes scope, authority, the cause, affected contract, safety, acceptance, qualification, or repeated-failure facts. Do not reassess for unchanged task narration, elapsed time, or a preference that does not alter qualification.
 
 Classify the route:
@@ -63,6 +65,8 @@ Classify the route:
 
 Resolve model names through the versioned registry. Select a qualified active binding that meets the route and task, honoring an explicit user model or effort preference when it is compatible with that binding, the route, and native tool support. If a preference is incompatible or unavailable, keep the required qualification floor, state the limitation, and choose the qualified binding under the fallback rule. Never treat a prompt claiming a model name as proof of selection. Use clean contexts for independent review. The implementation author cannot review their own work.
 
+Reject self-review and keep closure held until the named independent review gate is satisfied. Changing candidate bytes starts a new candidate cycle, invalidates stale evidence, and requires fresh review plus both fresh native qualification runs before promotion or closure.
+
 Before each lightweight or governed delegation, show one concise user-facing notice containing the assigned model, effort, cost class, task, and one-sentence reason. Use this form:
 
 `Council: <model>/<effort> (<premium|standard|economical>) assigned <task> because <brief reason>.`
@@ -74,6 +78,8 @@ For model dispatch or availability, read [model adapters](references/model-adapt
 ## Work with project methods
 
 Read [project profiles](references/project-profiles.yaml) when a repository supplies `.agent-council/profile.yaml` or when a packaged profile applies. The outer agent selects and interprets one explicit profile. The local runtime pins the packaged default profile hash only. It does not dynamically load, merge, inherit, or semantically enforce repository profiles. Hold the affected route if profile selection or inheritance is unsupported or ambiguous.
+
+When no repository profile is present, use the packaged default profile. Do not inherit unrelated project rules, and do not change external-action authority through profile selection or fallback.
 
 Native standalone workflow is primary. Read [Compound Engineering integration](references/compound-engineering.yaml) only when that plugin is available and its method fits the work. It is an optional interoperability path, never an activation prerequisite or a dependency for normal Council operation. The Council decides who performs work and what evidence is required. When used, Compound Engineering can define how planning, debugging, implementation, review, and shipping are performed. Do not duplicate a completed Compound Engineering gate when its receipt satisfies the Council evidence contract.
 

@@ -195,8 +195,9 @@ def score(args: argparse.Namespace) -> dict[str, Any]:
     for scenario_id in sorted(EXPECTED_CLAIMS):
         missing = sorted(EXPECTED_CLAIMS[scenario_id] - actual[scenario_id])
         unexpected = sorted(actual[scenario_id] - EXPECTED_CLAIMS[scenario_id])
-        status = "passed" if not missing and not unexpected else "failed"
-        details.append({"scenario_id": scenario_id, "status": status, "missing_claims": missing, "unexpected_claims": unexpected})
+        excessive = len(unexpected) > 5
+        status = "passed" if not missing and not excessive else "failed"
+        details.append({"scenario_id": scenario_id, "status": status, "missing_claims": missing, "additional_claims": unexpected, "excessive_additional_claims": excessive})
     result = "passed" if all(item["status"] == "passed" for item in details) else "failed"
     receipt = {
         "schema_version": "agent-council.claude-qualification-receipt/v1",

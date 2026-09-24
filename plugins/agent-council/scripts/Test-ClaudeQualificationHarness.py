@@ -71,6 +71,7 @@ def main() -> int:
         receipts: list[Path] = []
         for index, workspace in enumerate(workspaces, 1):
             response = {"schema_version": "agent-council.claude-native-response/v1", "results": [{"scenario_id": scenario_id, "claims": claims, "rationale": "bounded"} for scenario_id, claims in EXPECTED_CLAIMS.items()]}
+            response["results"][10]["claims"] = [*response["results"][10]["claims"], "closure_held"]
             transcript_path = root / f"transcript-{index}.jsonl"
             receipt_path = root / f"receipt-{index}.json"
             transcript(transcript_path, "claude-opus-5-5", response)

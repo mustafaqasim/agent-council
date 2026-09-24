@@ -12,9 +12,11 @@ required_fields:
   - "route_floors"
   - "required_evidence"
 rules:
+  - "When no repository profile is present, select profiles/default.yaml without inheriting unrelated project rules."
   - "Profiles may raise a route floor or add gates when the outer agent explicitly applies them."
   - "Profiles cannot permit self-review, lower-tier substitution for ultimate gates, unverified model identity, or narrative-only closure."
   - "Profiles cannot grant mutation, publication, destructive, credential, production, or third-party authority."
+  - "Selecting, omitting, or falling back to a profile never changes external-action authority."
   - "Unknown profile keys fail closed when they affect authority or closure."
   - "Project-specific tools and domain rules remain in the project profile, not the reusable Council core."
   - "Unsupported inheritance, unknown profile semantics, or ambiguous profile selection hold the affected route. Do not imply the runtime enforced them."

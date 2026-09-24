@@ -99,6 +99,7 @@ def main() -> int:
     require("PLUGIN_ROOT" in " ".join(session_commands + prompt_commands), "Codex plugin root is not passed to the update manager")
     require(chr(0x2014) not in routing_hook, "routing hook contains a prohibited em dash")
     require("Before each lightweight or governed delegation" in skill, "visible dispatch notice is missing")
+    require(all(item in skill for item in ("separating the observed symptom from the hypothesized cause", "keep closure held", "both fresh native qualification runs", "preserve the user's existing authorization boundary", "do not change external-action authority")), "qualification behavior remains implicit")
     require("Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing." in adapters, "lightweight native dispatch is incorrectly case-bound")
     require("governed_case_required_receipt" in adapters, "governed dispatch receipt requirements are not scoped")
     if source_checkout:
@@ -128,6 +129,7 @@ def main() -> int:
     require("continue with the native standalone workflow" in integration, "CE-absent operation is not explicit")
     require("structural test" in forward_tests and "fresh-chat selection evidence" in forward_tests, "forward tests do not distinguish structural and fresh-chat evidence")
     require(all(item in forward_tests for item in ("debugging", "routine refactor", "council_reentry: denied", "Compound Engineering is absent", "CrowdStrike research", "Correct one typo", 'id: "GFT22"')), "forward tests lack engineering, general-work, negative, nested, standalone, or availability scenarios")
+    require(all(item in forward_tests for item in ("Test-RoutingPolicyPacketD.py::repeated-unresolved-failure", "Test-RoutingPolicyPacketD.py::routine-deterministic-check", "Test-AgentCouncilPlugin.py::unrelated-local-profile-is-ignored")), "GFT03, GFT09, or GFT12 lacks executable structural coverage")
     require('profile_id: "default"' in profile and 'architecture_change: "R3"' in profile, "default profile route floor is invalid")
     require('semantic_policy: "outer_agent_only"' in profile and 'runtime_snapshot: "pinned_hash_only"' in profile, "default profile enforcement boundary is invalid")
 
