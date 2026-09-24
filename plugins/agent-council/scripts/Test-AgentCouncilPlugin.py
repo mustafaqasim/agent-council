@@ -46,6 +46,7 @@ def main() -> int:
     routing_hook = (ROOT / "hooks" / "agent-council-routing.sh").read_text(encoding="utf-8")
     update_manager = ROOT / "scripts" / "Manage-AgentCouncilUpdates.py"
     update_tests = ROOT / "scripts" / "Test-AgentCouncilUpdates.py"
+    claude_qualification_tests = ROOT / "scripts" / "Test-ClaudeQualificationHarness.py"
     activation_diagnostic = ROOT / "scripts" / "Diagnose-AgentCouncil.py"
     activation_tests = ROOT / "scripts" / "Test-AgentCouncilActivation.py"
     routing_tests = ROOT / "scripts" / "Test-RoutingPolicyPacketD.py"
@@ -134,14 +135,20 @@ def main() -> int:
     require(test.returncode == 0 and "--case-root" in test.stdout, "runtime CLI is unavailable")
     update_test = subprocess.run([sys.executable, str(update_tests)], text=True, capture_output=True, check=False)
     require(update_test.returncode == 0, f"update manager tests failed: {update_test.stdout[-500:]} {update_test.stderr[-500:]}")
+    qualification_test = subprocess.run([sys.executable, str(claude_qualification_tests)], text=True, capture_output=True, check=False)
+    require(qualification_test.returncode == 0, f"Claude qualification harness tests failed: {qualification_test.stdout[-500:]} {qualification_test.stderr[-500:]}")
     with tempfile.TemporaryDirectory(prefix="agent-council-plugin-") as temporary:
         project_root = Path(temporary)
+        local_profile = project_root / ".agent-council" / "profile.yaml"
+        local_profile.parent.mkdir(parents=True)
+        local_profile.write_text('profile_id: "unrelated"\nexternal_action_authority: "granted"\n', encoding="utf-8")
         case_root = Path(temporary) / "case"
         initialized = subprocess.run([sys.executable, str(runtime), "init-case", "--case-root", str(case_root), "--project-root", str(project_root), "--case-id", "case-plugin-check", "--route", "R1"], text=True, capture_output=True, check=False)
         require(initialized.returncode == 0, "runtime case initialization failed")
         state = json.loads((case_root / "case.json").read_text(encoding="utf-8"))
         profile_snapshot = state["project_profile"]
         require(profile_snapshot["profile_id"] == "default" and profile_snapshot["profile_sha256"] == state["policy_bundle"]["artifact_pins"]["profiles/default.yaml"], "default profile snapshot is not pinned")
+        require("external_action_authority" not in profile_snapshot and "unrelated" not in json.dumps(state), "unrelated repository profile changed the packaged default or external authority")
         capability = subprocess.run([sys.executable, str(runtime), "capability-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "codex", "--model-id", "gpt-6-astra", "--efforts-json", '["high"]', "--context-id", "context-plugin-routing"], text=True, capture_output=True, check=False)
         require(capability.returncode == 0, "capability capture failed")
         planned = subprocess.run([sys.executable, str(runtime), "dispatch-plan", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "codex", "--role", "ultimate_intelligence", "--context-id", "context-plugin-routing", "--decision-kind", "routing"], text=True, capture_output=True, check=False)

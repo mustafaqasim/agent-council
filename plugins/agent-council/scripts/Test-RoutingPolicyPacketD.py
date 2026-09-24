@@ -35,10 +35,16 @@ def classify(scenario: dict[str, object]) -> dict[str, object]:
     risks = [item for item in scenario.get("risk", []) if item in RISK_ROUTES]
     if risks:
         route = max((RISK_ROUTES[item] for item in risks), key=lambda value: int(value[1:]))
-        return {"outcome": route, "case": True, "mutation": scenario.get("authority") != "diagnosis_only"}
+        result = {"outcome": route, "case": True, "mutation": scenario.get("authority") != "diagnosis_only"}
+        if "repeated_unresolved_failure" in risks:
+            result.update({"diagnosis_reset": True, "repeat_same_action": False})
+        return result
     if "new_evidence" in scenario:
         return {"outcome": "lightweight" if scenario.get("economics") == "beneficial" else "direct", "reassess": scenario["new_evidence"] in MATERIAL_EVIDENCE}
-    return {"outcome": "lightweight" if scenario.get("economics") == "beneficial" else "direct", "case": False, "mutation": scenario.get("authority") != "diagnosis_only"}
+    result = {"outcome": "lightweight" if scenario.get("economics") == "beneficial" else "direct", "case": False, "mutation": scenario.get("authority") != "diagnosis_only"}
+    if scenario.get("operation") == "routine_deterministic_check":
+        result.update({"ordinary_operation_exclusion": True, "authorization_scope": "preserved"})
+    return result
 
 
 def require(condition: bool, message: str) -> None:

@@ -77,17 +77,20 @@ codex:
   prohibition: "A model name in the worker prompt is not a model-selection receipt."
 
 claude_code:
-  mechanism: "Use the Agent tool with an explicit model parameter to dispatch work to Claude Code subagents."
+  mechanism: "Use the Agent tool for ordinary in-session delegation only when its accepted alias is observed resolving to the exact registry model ID. Use fresh interactive Claude Code sessions with an exact full model ID for native qualification."
   status: "Qualified only for active v2 bindings. Opus 5.5 is the intended operational successor candidate and awaits native qualification."
   assurance_level: "explicit_tool_selection"
-  delegation_tool: "Agent tool (model parameter set to the registry model_id for the requested tier)"
+  delegation_tool: "Agent tool with a supported alias plus provider-observed exact identity for ordinary delegation; interactive Claude Code CLI with --model <full-model-id> for native qualification"
   procedure:
     - "Resolve the requested tier through the active registry binding."
     - "Inspect the Agent tool's supported model identifiers before dispatch."
-    - "Pass the explicit registry model_id in the Agent tool's model parameter."
+    - "Never pass a full registry model ID to an Agent tool whose schema accepts aliases only. An alias is not versioned model-selection evidence."
+    - "Use an Agent alias only when the returned provider identity resolves to the exact active registry model ID; otherwise record the binding unavailable and apply the normal fallback rule."
     - "Record the returned subagent output reference, task identity, and context identity."
     - "Use clean, self-contained subagent contexts for independent review and forward tests."
-    - "The Agent tool model parameter constitutes explicit_tool_selection assurance when the provider accepts and reflects the specified model_id."
+    - "For native qualification, use scripts/ClaudeQualificationHarness.py to prepare two oracle-free workspaces, then launch two fresh interactive sessions with --model set to the exact full model ID, --safe-mode, --restricted, and distinct --session-id values."
+    - "Qualification evidence is valid only when the persisted Claude transcript reports the exact model ID, the harness scores every scenario, and pair validation confirms identical candidate and evaluation-bundle hashes with distinct contexts."
+    - "The Agent tool model parameter constitutes explicit_tool_selection assurance only when the provider accepts and reflects the exact registry model ID."
   tier_bindings:
     ultimate_intelligence: "claude-code-v2-ultimate -> claude-fable-5-1"
     operational_intelligence: "claude-code-v2-operational -> claude-opus-5"
@@ -98,7 +101,7 @@ claude_code:
   unavailable:
     disposition: "Record required_tier_binding_unavailable and hold the dependent engineering gate."
     permitted_progress: ["Authorized read-only evidence gathering", "Packet preparation", "Ordinary excluded operations"]
-  prohibited: ["Embedded API keys", "New credential storage", "Silent third-party uploads", "Headless one-shot CLI workarounds", "New broker, scheduler, database, or persistent orchestrator"]
+  prohibited: ["Embedded API keys", "New credential storage", "Silent third-party uploads", "Headless one-shot CLI workarounds", "Treating an Agent alias as proof of a versioned model ID", "New broker, scheduler, database, or persistent orchestrator"]
 
 availability:
   transient: "Retry only demonstrably transient failures with bounded waits, retained identity, and the same pinned registry binding."

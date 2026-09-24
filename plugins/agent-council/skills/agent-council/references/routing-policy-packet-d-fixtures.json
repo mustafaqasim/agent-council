@@ -12,6 +12,8 @@
     {"id": "ordinary-failure", "risk": ["unexpected_ordinary_failure"], "economics": "beneficial", "expected": {"outcome": "R2", "case": true}},
     {"id": "qualification-failure", "risk": ["qualification_failure"], "economics": "beneficial", "expected": {"outcome": "R3", "case": true}},
     {"id": "highest-route-wins", "risk": ["asserted_automation_repair", "acceptance_gate_change"], "economics": "not_beneficial", "expected": {"outcome": "R3", "case": true}},
-    {"id": "nonmaterial-repeat", "risk": [], "economics": "not_beneficial", "new_evidence": "unchanged_narration", "expected": {"outcome": "direct", "reassess": false}}
+    {"id": "nonmaterial-repeat", "risk": [], "economics": "not_beneficial", "new_evidence": "unchanged_narration", "expected": {"outcome": "direct", "reassess": false}},
+    {"id": "repeated-unresolved-failure", "risk": ["repeated_unresolved_failure"], "economics": "not_beneficial", "expected": {"outcome": "R3", "case": true, "diagnosis_reset": true, "repeat_same_action": false}},
+    {"id": "routine-deterministic-check", "operation": "routine_deterministic_check", "risk": [], "economics": "not_beneficial", "expected": {"outcome": "direct", "case": false, "ordinary_operation_exclusion": true, "authorization_scope": "preserved"}}
   ]
 }
