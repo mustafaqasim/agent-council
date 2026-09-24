@@ -32,9 +32,29 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, str(HARNESS), *args], text=True, capture_output=True, check=False)
 
 
-def transcript(path: Path, model: str, result: dict[str, object]) -> None:
-    row = {"type": "assistant", "message": {"model": model, "content": [{"type": "text", "text": json.dumps(result)}]}}
-    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+def transcript(path: Path, model: str, result: dict[str, object], session_id: str, workspace: Path, *, run_id: str = "native-forward-run-1", include_native_records: bool = True, prior_prompt: bool = False, prohibited_tool: bool = False, external_path: bool = False) -> None:
+    resolved = workspace.resolve()
+    rows: list[dict[str, object]] = []
+    if include_native_records:
+        name = f"Agent Council {run_id}"
+        rows.extend([
+            {"type": "custom-title", "customTitle": name, "sessionId": session_id},
+            {"type": "agent-name", "agentName": name, "sessionId": session_id},
+            {"type": "mode", "mode": "normal", "sessionId": session_id},
+            {"type": "permission-mode", "permissionMode": "auto", "sessionId": session_id},
+        ])
+    if prior_prompt:
+        rows.append({"type": "user", "parentUuid": None, "isSidechain": False, "entrypoint": "cli", "promptSource": "typed", "origin": {"kind": "human"}, "sessionId": session_id, "cwd": str(resolved), "message": {"role": "user", "content": "Earlier conversation"}})
+    rows.append({"type": "user", "parentUuid": None, "isSidechain": False, "entrypoint": "cli", "promptSource": "typed", "origin": {"kind": "human"}, "sessionId": session_id, "cwd": str(resolved), "message": {"role": "user", "content": "Read evaluator-instructions.md and complete the blind evaluation now. Return only the required JSON object."}})
+    reads = [resolved / "evaluator-instructions.md", resolved / "requests.json", *sorted(item for item in (resolved / "candidate").rglob("*") if item.is_file())]
+    for index, read_path in enumerate(reads):
+        tool_name = "Write" if prohibited_tool and index == 0 else "Read"
+        selected_path = Path("/tmp/outside-qualification") if external_path and index == 0 else read_path
+        tool_id = f"tool-{index}"
+        rows.append({"type": "assistant", "isSidechain": False, "entrypoint": "cli", "effort": "high", "sessionId": session_id, "cwd": str(resolved), "message": {"model": model, "content": [{"type": "tool_use", "id": tool_id, "name": tool_name, "input": {"file_path": str(selected_path)}}]}})
+        rows.append({"type": "user", "isSidechain": False, "entrypoint": "cli", "sessionId": session_id, "cwd": str(resolved), "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "bounded"}]}})
+    rows.append({"type": "assistant", "isSidechain": False, "entrypoint": "cli", "effort": "high", "sessionId": session_id, "cwd": str(resolved), "message": {"model": model, "content": [{"type": "text", "text": json.dumps(result)}]}})
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -57,6 +77,7 @@ def main() -> int:
             command = manifest["launch_command"]
             require(command[0] == "claude" and command[command.index("--model") + 1] == "claude-opus-5-5", "launch command does not pin the exact model")
             require("--safe-mode" in command and "--restricted" in command, "launch command is not isolated")
+            require("--tools" in command and command[command.index("--tools") + 1] == "Read,Glob,Grep", "launch command does not restrict tools to read-only operations")
             require("--session-id" in command and command[command.index("--session-id") + 1] == context_id, "launch command does not pin the fresh context")
             require("-p" not in command and "--print" not in command, "qualification must not use headless one-shot mode")
             exposed = "\n".join(path.read_text(encoding="utf-8") for path in workspace.rglob("*") if path.is_file())
@@ -74,7 +95,7 @@ def main() -> int:
             response["results"][10]["claims"] = [*response["results"][10]["claims"], "closure_held"]
             transcript_path = root / f"transcript-{index}.jsonl"
             receipt_path = root / f"receipt-{index}.json"
-            transcript(transcript_path, "claude-opus-5-5", response)
+            transcript(transcript_path, "claude-opus-5-5", response, str(manifests[index - 1]["session_id"]), workspace, run_id=f"native-forward-run-{index}")
             scored = run("score", "--workspace", str(workspace), "--transcript", str(transcript_path), "--receipt", str(receipt_path))
             require(scored.returncode == 0, f"valid run {index} did not score: {scored.stdout} {scored.stderr}")
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -84,9 +105,62 @@ def main() -> int:
         require(paired.returncode == 0 and json.loads(paired.stdout)["result"] == "passed", "two fresh identical-candidate receipts did not validate")
 
         wrong_transcript = root / "wrong-model.jsonl"
-        transcript(wrong_transcript, "claude-opus-5", response)
+        transcript(wrong_transcript, "claude-opus-5", response, str(manifests[0]["session_id"]), workspaces[0])
         wrong = run("score", "--workspace", str(workspaces[0]), "--transcript", str(wrong_transcript), "--receipt", str(root / "wrong.json"))
         require(wrong.returncode != 0 and "MODEL_IDENTITY_MISMATCH" in wrong.stdout, "wrong Claude model identity was accepted")
+
+        wrong_session_transcript = root / "wrong-session.jsonl"
+        transcript(wrong_session_transcript, "claude-opus-5-5", response, str(uuid.uuid4()), workspaces[0])
+        wrong_session = run("score", "--workspace", str(workspaces[0]), "--transcript", str(wrong_session_transcript), "--receipt", str(root / "wrong-session.json"))
+        require(wrong_session.returncode != 0 and "TRANSCRIPT_SESSION_MISMATCH" in wrong_session.stdout, "unbound transcript session was accepted")
+
+        missing_native_transcript = root / "missing-native.jsonl"
+        transcript(missing_native_transcript, "claude-opus-5-5", response, str(manifests[0]["session_id"]), workspaces[0], include_native_records=False)
+        missing_native = run("score", "--workspace", str(workspaces[0]), "--transcript", str(missing_native_transcript), "--receipt", str(root / "missing-native.json"))
+        require(missing_native.returncode != 0 and "TRANSCRIPT_NATIVE_RECORDS_MISSING" in missing_native.stdout, "transcript without native session records was accepted")
+
+        prior_prompt_transcript = root / "prior-prompt.jsonl"
+        transcript(prior_prompt_transcript, "claude-opus-5-5", response, str(manifests[0]["session_id"]), workspaces[0], prior_prompt=True)
+        prior_prompt_result = run("score", "--workspace", str(workspaces[0]), "--transcript", str(prior_prompt_transcript), "--receipt", str(root / "prior-prompt.json"))
+        require(prior_prompt_result.returncode != 0 and "TRANSCRIPT_CONTEXT_NOT_CLEAN" in prior_prompt_result.stdout, "transcript with prior conversation was accepted")
+
+        prohibited_tool_transcript = root / "prohibited-tool.jsonl"
+        transcript(prohibited_tool_transcript, "claude-opus-5-5", response, str(manifests[0]["session_id"]), workspaces[0], prohibited_tool=True)
+        prohibited_tool_result = run("score", "--workspace", str(workspaces[0]), "--transcript", str(prohibited_tool_transcript), "--receipt", str(root / "prohibited-tool.json"))
+        require(prohibited_tool_result.returncode != 0 and "TRANSCRIPT_TOOL_NOT_ALLOWED" in prohibited_tool_result.stdout, "prohibited transcript tool use was accepted")
+
+        external_path_transcript = root / "external-path.jsonl"
+        transcript(external_path_transcript, "claude-opus-5-5", response, str(manifests[0]["session_id"]), workspaces[0], external_path=True)
+        external_path_result = run("score", "--workspace", str(workspaces[0]), "--transcript", str(external_path_transcript), "--receipt", str(root / "external-path.json"))
+        require(external_path_result.returncode != 0 and "TRANSCRIPT_PATH_OUTSIDE_WORKSPACE" in external_path_result.stdout, "out-of-workspace transcript read was accepted")
+
+        overclaimed = json.loads(json.dumps(response))
+        overclaimed["results"][0]["claims"].append("route_r3")
+        overclaimed_transcript = root / "overclaimed.jsonl"
+        transcript(overclaimed_transcript, "claude-opus-5-5", overclaimed, str(manifests[0]["session_id"]), workspaces[0])
+        overclaim = run("score", "--workspace", str(workspaces[0]), "--transcript", str(overclaimed_transcript), "--receipt", str(root / "overclaimed.json"))
+        require(overclaim.returncode != 0 and "QUALIFICATION_SCENARIOS_FAILED" in overclaim.stdout, "incorrect additional claim was accepted")
+
+        invalid_receipt = json.loads(receipts[1].read_text(encoding="utf-8"))
+        invalid_receipt["scenario_results"] = []
+        invalid_receipt_path = root / "invalid-receipt.json"
+        invalid_receipt_path.write_text(json.dumps(invalid_receipt), encoding="utf-8")
+        invalid_pair = run("validate-pair", "--receipt", str(receipts[0]), "--receipt", str(invalid_receipt_path))
+        require(invalid_pair.returncode != 0 and "QUALIFICATION_RECEIPT_INVALID" in invalid_pair.stdout, "pair validation accepted a receipt without scenario evidence")
+
+        candidate_file = workspaces[0] / "candidate" / "SKILL.md"
+        candidate_bytes = candidate_file.read_bytes()
+        candidate_file.write_bytes(candidate_bytes + b"\n")
+        changed_candidate = run("score", "--workspace", str(workspaces[0]), "--transcript", str(root / "transcript-1.jsonl"), "--receipt", str(root / "changed-candidate.json"))
+        require(changed_candidate.returncode != 0 and "QUALIFICATION_CANDIDATE_CHANGED" in changed_candidate.stdout, "candidate workspace tampering was accepted")
+        candidate_file.write_bytes(candidate_bytes)
+
+        changed_manifest = workspaces[0] / "qualification-run.json"
+        manifest_value = json.loads(changed_manifest.read_text(encoding="utf-8"))
+        manifest_value["launch_command"] = [item for item in manifest_value["launch_command"] if item != "--safe-mode"]
+        changed_manifest.write_text(json.dumps(manifest_value), encoding="utf-8")
+        changed_launch = run("score", "--workspace", str(workspaces[0]), "--transcript", str(root / "transcript-1.jsonl"), "--receipt", str(root / "changed-launch.json"))
+        require(changed_launch.returncode != 0 and "QUALIFICATION_LAUNCH_COMMAND_INVALID" in changed_launch.stdout, "manifest launch-command tampering was accepted")
 
         same_context = json.loads(receipts[1].read_text(encoding="utf-8"))
         same_context["session_id"] = json.loads(receipts[0].read_text(encoding="utf-8"))["session_id"]

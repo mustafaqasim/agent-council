@@ -79,7 +79,9 @@ codex:
 claude_code:
   mechanism: "Use the Agent tool for ordinary in-session delegation only when its accepted alias is observed resolving to the exact registry model ID. Use fresh interactive Claude Code sessions with an exact full model ID for native qualification."
   status: "Qualified only for active v2 bindings. Opus 5.5 is the qualified operational binding after two clean blind native runs."
-  assurance_level: "explicit_tool_selection"
+  assurance:
+    ordinary_agent: "provider_attested exact identity after alias selection"
+    native_qualification: "explicit full-model selection plus provider-attested transcript identity"
   delegation_tool: "Agent tool with a supported alias plus provider-observed exact identity for ordinary delegation; interactive Claude Code CLI with --model <full-model-id> for native qualification"
   procedure:
     - "Resolve the requested tier through the active registry binding."
