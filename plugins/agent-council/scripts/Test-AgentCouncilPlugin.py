@@ -9,6 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ClaudeQualificationHarness import CANDIDATE_FILES, candidate_digest
+
 ROOT = Path(__file__).resolve().parents[1]
 ASSERTION_COUNT = 0
 
@@ -25,6 +27,18 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(serialized).hexdigest()
 
 
+def git_candidate_digest(repository_root: Path, commit: str) -> str:
+    value = hashlib.sha256()
+    for relative in sorted(CANDIDATE_FILES):
+        name = relative.encode("utf-8")
+        content = subprocess.run(["git", "show", f"{commit}:plugins/agent-council/{relative}"], cwd=repository_root, capture_output=True, check=True).stdout
+        value.update(len(name).to_bytes(8, "big"))
+        value.update(name)
+        value.update(len(content).to_bytes(8, "big"))
+        value.update(content)
+    return value.hexdigest()
+
+
 def main() -> int:
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     claude_manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
@@ -37,6 +51,9 @@ def main() -> int:
     registry = json.loads((ROOT / "standards" / "agent-model-registry.v2.yaml").read_text(encoding="utf-8"))
     initial_claude_designation = json.loads((ROOT / "standards" / "model-qualifications" / "initial-claude-code-designation.v2.yaml").read_text(encoding="utf-8"))
     opus_55_correction = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-catalog-correction.v1.yaml").read_text(encoding="utf-8"))
+    opus_55_qualification = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-native-qualification.v1.yaml").read_text(encoding="utf-8"))
+    opus_55_run_paths = [ROOT / "standards" / "model-qualifications" / f"claude-opus-5-5-native-run-{index}.v1.json" for index in (1, 2)]
+    opus_55_run_receipts = [json.loads(path.read_text(encoding="utf-8")) for path in opus_55_run_paths]
     integration = (ROOT / "skills" / "agent-council" / "references" / "compound-engineering.yaml").read_text(encoding="utf-8")
     forward_tests = (ROOT / "skills" / "agent-council" / "references" / "forward-tests.yaml").read_text(encoding="utf-8")
     openai_agent = (ROOT / "skills" / "agent-council" / "agents" / "openai.yaml").read_text(encoding="utf-8")
@@ -56,7 +73,7 @@ def main() -> int:
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
-    require(manifest["version"] == claude_manifest["version"] == "0.8.1", "plugin manifest versions are not aligned")
+    require(manifest["version"] == claude_manifest["version"] == "0.8.2", "plugin manifest versions are not aligned")
     if source_checkout:
         marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")
@@ -113,14 +130,25 @@ def main() -> int:
     require(registry["registry_sha256"] == canonical_sha256({key: value for key, value in registry.items() if key != "registry_sha256"}), "registry hash is invalid")
     require(all(binding["binding_sha256"] == canonical_sha256({key: value for key, value in binding.items() if key != "binding_sha256"}) for binding in registry["bindings"]), "binding hash is invalid")
     qualified_claude_operational = [binding for binding in registry["bindings"] if binding["provider"] == "claude_code" and binding["tier"] == "operational_intelligence" and binding["status"] == "qualified"]
-    require(len(qualified_claude_operational) == 1 and qualified_claude_operational[0]["binding_id"] == "claude-code-v2-operational" and qualified_claude_operational[0]["model_id"] == "claude-opus-5", "Claude Code operational route must remain qualified for Opus 5 only")
-    opus_55_candidates = [binding for binding in registry["bindings"] if binding["binding_id"] == "claude-code-v2-operational-opus-5-5"]
-    require(len(opus_55_candidates) == 1 and opus_55_candidates[0]["model_id"] == "claude-opus-5-5" and opus_55_candidates[0]["tier"] == "operational_intelligence" and opus_55_candidates[0]["status"] == "candidate", "Opus 5.5 candidate binding is missing or invalid")
+    require(len(qualified_claude_operational) == 1 and qualified_claude_operational[0]["binding_id"] == "claude-code-v2-operational-opus-5-5" and qualified_claude_operational[0]["model_id"] == "claude-opus-5-5", "Claude Code operational route must use qualified Opus 5.5")
+    retired_opus_5 = [binding for binding in registry["bindings"] if binding["binding_id"] == "claude-code-v2-operational"]
+    require(len(retired_opus_5) == 1 and retired_opus_5[0]["model_id"] == "claude-opus-5" and retired_opus_5[0]["status"] == "revoked", "superseded Opus 5 binding is not revoked")
     initial_operational = [designation for designation in initial_claude_designation["designations"] if designation["binding_id"] == "claude-code-v2-operational"]
     require(initial_claude_designation["recorded_at"] == "2026-09-21T00:00:00Z" and len(initial_operational) == 1 and initial_operational[0]["model_id"] == "claude-opus-5", "initial Claude designation must not be backdated to Opus 5.5")
     require(opus_55_correction["recorded_at"] == "2026-09-24T03:42:36Z" and opus_55_correction["subject"]["status"] == "candidate" and opus_55_correction["evidence"]["official_release_url"] == "https://platform.claude.com/docs/en/models/opus-5-5/overview", "Opus 5.5 correction record is incomplete")
     require("Two fresh native qualification runs on identical candidate bytes." in opus_55_correction["promotion_requirements"] and "Each run records the observed Claude Code model identity as claude-opus-5-5." in opus_55_correction["promotion_requirements"], "Opus 5.5 promotion requirements are incomplete")
-    require('operational_intelligence: "claude-code-v2-operational -> claude-opus-5"' in adapters and "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5, intended successor awaiting qualification" in adapters, "Claude adapter route or candidate notice is invalid")
+    require(opus_55_qualification["pair_result"] == "passed" and opus_55_qualification["candidate"]["candidate_sha256"] == candidate_digest(), "Opus 5.5 qualification pair is missing or bound to the current candidate")
+    require(len(opus_55_qualification["native_runs"]) == 2 and len({run["session_id"] for run in opus_55_qualification["native_runs"]}) == 2 and all(run["actual_model_id"] == "claude-opus-5-5" and run["clean_context"] is True and run["blind"] is True and run["result"] == "passed" for run in opus_55_qualification["native_runs"]), "Opus 5.5 native qualification receipts are invalid")
+    pair_validation = subprocess.run([sys.executable, str(ROOT / "scripts" / "ClaudeQualificationHarness.py"), "validate-pair", "--receipt", str(opus_55_run_paths[0]), "--receipt", str(opus_55_run_paths[1])], text=True, capture_output=True, check=False)
+    require(pair_validation.returncode == 0 and json.loads(pair_validation.stdout)["result"] == "passed", "persisted Opus 5.5 run receipts do not form a valid pair")
+    for summary, receipt, path in zip(opus_55_qualification["native_runs"], opus_55_run_receipts, opus_55_run_paths):
+        require(summary["receipt_ref"] == path.relative_to(ROOT).as_posix() and summary["receipt_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest(), "Opus 5.5 aggregate receipt does not bind its persisted run receipt")
+        require(all(summary[key] == receipt[key] for key in ("run_id", "session_id", "actual_model_id", "transcript_sha256", "clean_context", "blind", "result")), "Opus 5.5 aggregate receipt disagrees with its persisted run receipt")
+        require(receipt["candidate_sha256"] == opus_55_qualification["candidate"]["candidate_sha256"] and receipt["evaluation_bundle_sha256"] == opus_55_qualification["candidate"]["evaluation_bundle_sha256"], "Opus 5.5 persisted run receipt is bound to different qualification bytes")
+    if source_checkout:
+        require(git_candidate_digest(repository_root, opus_55_qualification["candidate"]["source_commit"]) == opus_55_qualification["candidate"]["candidate_sha256"], "Opus 5.5 source commit does not contain the qualified candidate bytes")
+    require('operational_intelligence: "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5"' in adapters and "claude-code-v2-operational -> claude-opus-5, superseded after native qualification" in adapters, "Claude adapter promotion is invalid")
+    require('ordinary_agent: "provider_attested exact identity after alias selection"' in adapters and 'native_qualification: "explicit full-model selection plus provider-attested transcript identity"' in adapters, "Claude adapter assurance paths are conflated")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
     require("mode:return-to-caller" in integration, "CE return-to-caller boundary is missing")
     require("Native standalone workflow is primary" in integration, "CE integration lacks a native standalone path")
@@ -158,14 +186,14 @@ def main() -> int:
         plan = json.loads(planned.stdout)
         require(plan["user_notice"]["message"].startswith("Council: gpt-6-astra/high (premium) assigned routing task because "), "dispatch plan did not emit the bound visible notice")
         require(plan["work_method"] == "native" and plan["orchestrator_owner"] == "council" and plan["council_reentry"] == "denied" and plan["execution_mode"] == "native", "native method contract is invalid")
-        claude_capability = subprocess.run([sys.executable, str(runtime), "capability-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--model-id", "claude-opus-5", "--efforts-json", '["high"]', "--context-id", "context-plugin-claude-operational"], text=True, capture_output=True, check=False)
-        require(claude_capability.returncode == 0, "Claude Code Opus 5 capability capture failed")
+        claude_capability = subprocess.run([sys.executable, str(runtime), "capability-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--model-id", "claude-opus-5-5", "--efforts-json", '["high"]', "--context-id", "context-plugin-claude-operational"], text=True, capture_output=True, check=False)
+        require(claude_capability.returncode == 0, "Claude Code Opus 5.5 capability capture failed")
         claude_planned = subprocess.run([sys.executable, str(runtime), "dispatch-plan", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--role", "operational_intelligence", "--context-id", "context-plugin-claude-operational", "--decision-kind", "review"], text=True, capture_output=True, check=False)
         require(claude_planned.returncode == 0, "Claude Code operational dispatch plan failed")
         claude_plan = json.loads(claude_planned.stdout)
-        require(claude_plan["binding_id"] == "claude-code-v2-operational" and claude_plan["model_id"] == "claude-opus-5", "runtime selected the Opus 5.5 candidate for a qualified operational dispatch")
-        candidate_capture = subprocess.run([sys.executable, str(runtime), "dispatch-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--plan-nonce", claude_plan["plan_nonce"], "--task-id", "task-plugin-claude-operational", "--model-id", "claude-opus-5-5", "--effort", "high", "--context-id", "context-plugin-claude-operational", "--output-ref", "output-plugin-claude-operational", "--decision-kind", "review"], text=True, capture_output=True, check=False)
-        require(candidate_capture.returncode != 0 and "PROVIDER_RECEIPT_MISMATCH" in candidate_capture.stdout, "Opus 5.5 candidate bypassed the qualified dispatch gate")
+        require(claude_plan["binding_id"] == "claude-code-v2-operational-opus-5-5" and claude_plan["model_id"] == "claude-opus-5-5", "runtime did not select the qualified Opus 5.5 operational binding")
+        candidate_capture = subprocess.run([sys.executable, str(runtime), "dispatch-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--plan-nonce", claude_plan["plan_nonce"], "--task-id", "task-plugin-claude-operational", "--model-id", "claude-opus-5", "--effort", "high", "--context-id", "context-plugin-claude-operational", "--output-ref", "output-plugin-claude-operational", "--decision-kind", "review"], text=True, capture_output=True, check=False)
+        require(candidate_capture.returncode != 0 and "PROVIDER_RECEIPT_MISMATCH" in candidate_capture.stdout, "superseded Opus 5 bypassed the qualified dispatch gate")
     print(json.dumps({"result": "passed", "assertions": ASSERTION_COUNT, "source_checkout": source_checkout}, sort_keys=True))
     return 0
 

@@ -1,0 +1,27 @@
+{
+  "schema_version": "agent-council.claude-qualification-receipt/v1",
+  "run_id": "native-forward-run-2",
+  "session_id": "46689ff6-2f46-49c3-94b5-6abb9b940e8c",
+  "requested_model_id": "claude-opus-5-5",
+  "actual_model_id": "claude-opus-5-5",
+  "candidate_sha256": "529adba3cacb3d099c468c59f880f33100b6a991e364c4c88219c186e7899cd2",
+  "evaluation_bundle_sha256": "a9620180017cb17b68848abdc91dea5872987554841b777c099ccd09baeabfbf",
+  "transcript_sha256": "2b2a161af414106bf8038787b127ec56ccfdfe6b290619497db1f3e79a280efa",
+  "clean_context": true,
+  "blind": true,
+  "scenario_results": [
+    {"scenario_id": "GFT01", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT02", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT03", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT04", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT05", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT06", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT07", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT08", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT09", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT10", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT11", "status": "passed", "missing_claims": [], "additional_claims": ["closure_held"], "disallowed_additional_claims": []},
+    {"scenario_id": "GFT12", "status": "passed", "missing_claims": [], "additional_claims": [], "disallowed_additional_claims": []}
+  ],
+  "result": "passed"
+}

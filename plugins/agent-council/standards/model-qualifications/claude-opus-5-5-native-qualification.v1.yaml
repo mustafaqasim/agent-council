@@ -1,0 +1,55 @@
+{
+  "schema_version": "agent-council.model-qualification-receipt/v2",
+  "receipt_type": "model_qualification_receipt",
+  "receipt_id": "claude-opus-5-5-native-qualification-2026-09-24",
+  "recorded_at": "2026-09-24T05:27:41Z",
+  "provider": "claude_code",
+  "adapter": {
+    "adapter_id": "claude-code-interactive-exact-model",
+    "adapter_version": "v1",
+    "adapter_ref": "skills/agent-council/references/model-adapters.yaml#claude_code"
+  },
+  "candidate": {
+    "source_commit": "7d10703c54bd9c92e568df1d7ec0df00a86c260d",
+    "candidate_sha256": "529adba3cacb3d099c468c59f880f33100b6a991e364c4c88219c186e7899cd2",
+    "evaluation_bundle_sha256": "a9620180017cb17b68848abdc91dea5872987554841b777c099ccd09baeabfbf"
+  },
+  "designation": {
+    "binding_id": "claude-code-v2-operational-opus-5-5",
+    "tier": "operational_intelligence",
+    "model_id": "claude-opus-5-5",
+    "default_effort": "high",
+    "status": "qualified"
+  },
+  "native_runs": [
+    {
+      "run_id": "native-forward-run-1",
+      "session_id": "3939f1ea-ab14-476e-8c4c-0e65f82647fe",
+      "actual_model_id": "claude-opus-5-5",
+      "transcript_sha256": "0c3f8dea117f1e304301bcbf8bcbf50f27c0c823997c606827afa8d9e759fab8",
+      "receipt_ref": "standards/model-qualifications/claude-opus-5-5-native-run-1.v1.json",
+      "receipt_sha256": "a5bd3b813ecd0341b63fa19ba134400007ccb212fa153bbb3f4bb2878f8a6ab8",
+      "clean_context": true,
+      "blind": true,
+      "scenario_range": "GFT01-GFT12",
+      "result": "passed"
+    },
+    {
+      "run_id": "native-forward-run-2",
+      "session_id": "46689ff6-2f46-49c3-94b5-6abb9b940e8c",
+      "actual_model_id": "claude-opus-5-5",
+      "transcript_sha256": "2b2a161af414106bf8038787b127ec56ccfdfe6b290619497db1f3e79a280efa",
+      "receipt_ref": "standards/model-qualifications/claude-opus-5-5-native-run-2.v1.json",
+      "receipt_sha256": "ad973e92cd81b89f7ad55fc53468ffbcb15d38c1b0e47ba0f815e8b36003c01b",
+      "clean_context": true,
+      "blind": true,
+      "scenario_range": "GFT01-GFT12",
+      "result": "passed"
+    }
+  ],
+  "pair_result": "passed",
+  "limitations": [
+    "Qualification proves the recorded native Claude Code model and behavior on the pinned candidate and evaluation bundle.",
+    "Each live dispatch must still verify that the provider resolved the exact active registry model ID."
+  ]
+}
