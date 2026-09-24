@@ -32,7 +32,7 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, str(HARNESS), *args], text=True, capture_output=True, check=False)
 
 
-def transcript(path: Path, model: str, result: dict[str, object], session_id: str, workspace: Path, *, run_id: str = "native-forward-run-1", include_native_records: bool = True, prior_prompt: bool = False, prohibited_tool: bool = False, external_path: bool = False) -> None:
+def transcript(path: Path, model: str, result: dict[str, object], session_id: str, workspace: Path, *, run_id: str = "native-forward-run-1", include_native_records: bool = True, prior_prompt: bool = False, prohibited_tool: bool = False, external_path: bool = False, failed_read: bool = False) -> None:
     resolved = workspace.resolve()
     rows: list[dict[str, object]] = []
     if include_native_records:
@@ -52,7 +52,7 @@ def transcript(path: Path, model: str, result: dict[str, object], session_id: st
         selected_path = Path("/tmp/outside-qualification") if external_path and index == 0 else read_path
         tool_id = f"tool-{index}"
         rows.append({"type": "assistant", "isSidechain": False, "entrypoint": "cli", "effort": "high", "sessionId": session_id, "cwd": str(resolved), "message": {"model": model, "content": [{"type": "tool_use", "id": tool_id, "name": tool_name, "input": {"file_path": str(selected_path)}}]}})
-        rows.append({"type": "user", "isSidechain": False, "entrypoint": "cli", "sessionId": session_id, "cwd": str(resolved), "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "bounded"}]}})
+        rows.append({"type": "user", "isSidechain": False, "entrypoint": "cli", "sessionId": session_id, "cwd": str(resolved), "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "denied" if failed_read and index == 0 else "bounded", "is_error": failed_read and index == 0}]}})
     rows.append({"type": "assistant", "isSidechain": False, "entrypoint": "cli", "effort": "high", "sessionId": session_id, "cwd": str(resolved), "message": {"model": model, "content": [{"type": "text", "text": json.dumps(result)}]}})
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
@@ -133,6 +133,11 @@ def main() -> int:
         transcript(external_path_transcript, "claude-opus-5-5", response, str(manifests[0]["session_id"]), workspaces[0], external_path=True)
         external_path_result = run("score", "--workspace", str(workspaces[0]), "--transcript", str(external_path_transcript), "--receipt", str(root / "external-path.json"))
         require(external_path_result.returncode != 0 and "TRANSCRIPT_PATH_OUTSIDE_WORKSPACE" in external_path_result.stdout, "out-of-workspace transcript read was accepted")
+
+        failed_read_transcript = root / "failed-read.jsonl"
+        transcript(failed_read_transcript, "claude-opus-5-5", response, str(manifests[0]["session_id"]), workspaces[0], failed_read=True)
+        failed_read_result = run("score", "--workspace", str(workspaces[0]), "--transcript", str(failed_read_transcript), "--receipt", str(root / "failed-read.json"))
+        require(failed_read_result.returncode != 0 and "TRANSCRIPT_REQUIRED_READS_MISSING" in failed_read_result.stdout, "failed required read was accepted")
 
         overclaimed = json.loads(json.dumps(response))
         overclaimed["results"][0]["claims"].append("route_r3")

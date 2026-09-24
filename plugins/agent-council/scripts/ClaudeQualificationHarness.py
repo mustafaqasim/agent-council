@@ -245,8 +245,19 @@ def extract_response(transcript: Path, expected_model: str, expected_session_id:
     for relative in CANDIDATE_FILES:
         copied = relative.removeprefix("skills/agent-council/")
         required_reads.add(expected_workspace / "candidate" / copied)
-    observed_reads: set[Path] = set()
+    requested_reads: dict[str, Path] = {}
+    successful_reads: set[Path] = set()
     for row in rows[prompt_index + 1 : response_index + 1]:
+        if row.get("type") == "user":
+            message = row.get("message", {})
+            for item in message.get("content", []) if isinstance(message.get("content"), list) else []:
+                if not isinstance(item, dict) or item.get("type") != "tool_result" or item.get("is_error") is True:
+                    continue
+                tool_id = item.get("tool_use_id")
+                content = item.get("content")
+                if isinstance(tool_id, str) and tool_id in requested_reads and isinstance(content, str) and content:
+                    successful_reads.add(requested_reads[tool_id])
+            continue
         if row.get("type") != "assistant":
             continue
         if row.get("isSidechain") is not False or row.get("entrypoint") != "cli" or row.get("effort") != "high":
@@ -264,8 +275,11 @@ def extract_response(transcript: Path, expected_model: str, expected_session_id:
                 if not isinstance(path_value, str) or not path_within(Path(path_value), expected_workspace):
                     raise ValueError("TRANSCRIPT_PATH_OUTSIDE_WORKSPACE")
                 if name == "Read":
-                    observed_reads.add(Path(path_value).resolve())
-    if {path.resolve() for path in required_reads} - observed_reads:
+                    tool_id = item.get("id")
+                    if not isinstance(tool_id, str) or not tool_id:
+                        raise ValueError("TRANSCRIPT_TOOL_RESULT_INVALID")
+                    requested_reads[tool_id] = Path(path_value).resolve()
+    if {path.resolve() for path in required_reads} - successful_reads:
         raise ValueError("TRANSCRIPT_REQUIRED_READS_MISSING")
     return models[-1], response
 
