@@ -1,5 +1,9 @@
 # Migration
 
+## Version 0.7.1
+
+The Claude Code operational tier now binds to Opus 5.5 (`claude-opus-5-5`) instead of Opus 5. Registry and binding hashes are recomputed. Governed cases opened on an earlier version keep their pinned registry. No other routing change.
+
 ## Version 0.7.0
 
 Version 0.7.0 adds a bounded daily update check for trusted local Codex installations. Notification is the default. Automatic installation remains off until the user sends the exact `agent-council auto-update on` instruction and the preference is stored in the plugin data directory.

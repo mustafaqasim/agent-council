@@ -41,7 +41,7 @@ def main() -> int:
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
-    require(manifest["version"] == claude_manifest["version"] == "0.7.0", "plugin manifest versions are not aligned")
+    require(manifest["version"] == claude_manifest["version"] == "0.7.1", "plugin manifest versions are not aligned")
     if source_checkout:
         marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")

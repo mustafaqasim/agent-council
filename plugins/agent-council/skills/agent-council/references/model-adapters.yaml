@@ -80,7 +80,7 @@ claude_code:
     - "The Agent tool model parameter constitutes explicit_tool_selection assurance when the provider accepts and reflects the specified model_id."
   tier_bindings:
     ultimate_intelligence: "claude-code-v2-ultimate -> claude-fable-5-1"
-    operational_intelligence: "claude-code-v2-operational -> claude-opus-5"
+    operational_intelligence: "claude-code-v2-operational -> claude-opus-5-5"
     technical_tactical_intelligence: "claude-code-v2-technical -> claude-sonnet-5"
     worker_intelligence: "claude-code-v2-worker -> claude-haiku-4-5-20251001"
   unavailable:
