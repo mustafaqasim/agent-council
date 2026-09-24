@@ -99,7 +99,7 @@ def main() -> int:
     require("PLUGIN_ROOT" in " ".join(session_commands + prompt_commands), "Codex plugin root is not passed to the update manager")
     require(chr(0x2014) not in routing_hook, "routing hook contains a prohibited em dash")
     require("Before each lightweight or governed delegation" in skill, "visible dispatch notice is missing")
-    require(all(item in skill for item in ("separating the observed symptom from the hypothesized cause", "keep closure held", "both fresh native qualification runs", "preserve the user's existing authorization boundary", "do not change external-action authority")), "qualification behavior remains implicit")
+    require(all(item in skill for item in ("integration evidence across the affected consumers", "separating the observed symptom from the hypothesized cause", "keep closure held", "both fresh native qualification runs", "preserve the user's existing authorization boundary", "do not change external-action authority")), "qualification behavior remains implicit")
     require("Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing." in adapters, "lightweight native dispatch is incorrectly case-bound")
     require("governed_case_required_receipt" in adapters, "governed dispatch receipt requirements are not scoped")
     if source_checkout:
