@@ -97,13 +97,17 @@ Use these exact messages in a Codex task:
 
 ```text
 agent-council update now
-agent-council auto-update on
-agent-council auto-update off
+agent-council update-check on
+agent-council update-check off
+agent-council update status
+agent-council update cleanup
 ```
 
-`update now` installs the available version once. `auto-update on` explicitly opts in to installing future updates during the daily check. Automatic updates are off unless that setting is stored successfully. Settings and check state live in Codex's writable plugin data directory, not in the installed plugin cache.
+`update now` performs a fresh check and, when an update exists, gives you the exact two host-managed Codex commands to run: first refresh the marketplace, then install the current plugin release. The hook itself does not install or modify the plugin. Automatic installation is unavailable because a hook prompt cannot prove authenticated consent or bind approval to immutable package bytes. Legacy `auto-update on` settings are ignored, and that command now explains the limitation instead of saving executable consent.
 
-An installed update applies to the next task. The active task continues using the version it loaded at startup. Update failures do not block Agent Council routing. Claude Code users continue to update through the Claude plugin manager; the automatic installer is Codex-only.
+`update-check off` disables automatic marketplace requests. Manual `update now` checks still work. `update status` reads local updater state without making a network request, and `update cleanup` removes only updater-owned settings and check state. It does not remove the plugin or Council cases. To remove the plugin itself, use the host plugin manager.
+
+An update applies to the next task. The active task continues using the version it loaded at startup. Update-check failures do not block Agent Council routing. Claude Code users continue to update through the Claude plugin manager.
 
 ## Activation
 
@@ -115,6 +119,23 @@ Agent Council is a layer that sits above your other skills, not an alternative y
 - **Cloud and web sessions:** hooks do not run there. Use the `AGENTS.md` directive, which is persistent context loaded on every task.
 
 You can always invoke it explicitly with `/agent-council` (Claude Code) to guarantee the check.
+
+For a local, read-only activation report:
+
+```sh
+python3 plugins/agent-council/scripts/Diagnose-AgentCouncil.py
+```
+
+The report can verify package files, local runtime support, root markers, hook configuration, the directive fallback, and updater capability. It reports hook trust and actual agent compliance as unknown unless the host exposes authoritative evidence.
+
+## Measure routing value
+
+Maintainers can compare direct and Council-assisted runs with the local paired benchmark harness. It records complete pairs only, including elapsed time, retries, quality results, observed usage, and missing metrics. The harness does not call models, upload telemetry, or turn its synthetic fixtures into performance claims.
+
+```sh
+python3 plugins/agent-council/scripts/Invoke-AgentCouncilBenchmark.py --help
+python3 plugins/agent-council/scripts/Test-AgentCouncilBenchmark.py
+```
 
 ## What it does not do
 
@@ -140,6 +161,9 @@ Run the plugin check and contract groups from the plugin directory:
 cd plugins/agent-council
 python3 scripts/Test-AgentCouncilPlugin.py
 python3 scripts/Test-AgentCouncilUpdates.py
+python3 scripts/Test-AgentCouncilActivation.py
+python3 scripts/Test-RoutingPolicyPacketD.py
+python3 scripts/Test-AgentCouncilBenchmark.py
 for group in schema lifecycle stages routes provider authoring security dispatch-contracts; do
   python3 scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py --group "$group"
 done

@@ -1,0 +1,17 @@
+{
+  "schema_version": "agent-council.routing-policy-fixtures/v1",
+  "purpose": "Deterministic disputed routing scenarios for Packet D policy regression checks.",
+  "scenarios": [
+    {"id": "reentry-denied", "reentry": "denied", "risk": [], "economics": "beneficial", "expected": {"outcome": "return_evidence", "case": false, "delegate": false}},
+    {"id": "diagnosis-only-authority", "authority": "diagnosis_only", "risk": [], "economics": "beneficial", "expected": {"outcome": "lightweight", "case": false, "mutation": false}},
+    {"id": "known-cause-ordinary-local-repair", "risk": ["known_cause_reversible_ordinary_local_repair"], "economics": "not_beneficial", "expected": {"outcome": "direct", "case": false}},
+    {"id": "known-cause-ten-line-automation-repair", "risk": ["asserted_automation_repair"], "economics": "not_beneficial", "expected": {"outcome": "R1", "case": true}},
+    {"id": "local-repair-with-safety-impact", "risk": ["known_cause_reversible_local_repair", "safety_boundary_change"], "economics": "not_beneficial", "expected": {"outcome": "R3", "case": true}},
+    {"id": "read-only-architecture-assessment", "risk": ["read_only_architecture_assessment"], "economics": "beneficial", "expected": {"outcome": "lightweight", "case": false}},
+    {"id": "implement-architecture-change", "risk": ["architecture_implementation"], "economics": "not_beneficial", "expected": {"outcome": "R3", "case": true}},
+    {"id": "ordinary-failure", "risk": ["unexpected_ordinary_failure"], "economics": "beneficial", "expected": {"outcome": "R2", "case": true}},
+    {"id": "qualification-failure", "risk": ["qualification_failure"], "economics": "beneficial", "expected": {"outcome": "R3", "case": true}},
+    {"id": "highest-route-wins", "risk": ["asserted_automation_repair", "acceptance_gate_change"], "economics": "not_beneficial", "expected": {"outcome": "R3", "case": true}},
+    {"id": "nonmaterial-repeat", "risk": [], "economics": "not_beneficial", "new_evidence": "unchanged_narration", "expected": {"outcome": "direct", "reassess": false}}
+  ]
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex hooks for consent-controlled updates; all durable data stays in PLUGIN_DATA."""
+"""Check-only Agent Council update notices for Codex hooks."""
 from __future__ import annotations
 
 import contextlib
@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -25,30 +26,43 @@ DAY = 24 * 60 * 60
 MAX_BYTES = 128 * 1024
 NETWORK_TIMEOUT = 4
 CLI_TIMEOUT = 12
-INSTALL_TIMEOUT = 42
-HOOK_TIMEOUT = 60
 SETTINGS_FILE = "updates-settings.json"
 STATE_FILE = "updates-state.json"
 LOCK_FILE = "updates.lock"
+SETTINGS_LOCK_FILE = "updates-settings.lock"
+OWNED_DATA_FILES = (SETTINGS_FILE, STATE_FILE)
+HANDOFF_ARGV = ("codex", "plugin", "marketplace", "upgrade", "agent-council", "--json")
+HANDOFF_COMMAND = " ".join(HANDOFF_ARGV)
+INSTALL_ARGV = ("codex", "plugin", "add", "agent-council@agent-council", "--json")
+INSTALL_COMMAND = " ".join(INSTALL_ARGV)
 COMMANDS = {
-    "agent-council auto-update on": "on",
-    "agent-council auto-update off": "off",
+    "agent-council auto-update on": "auto-on",
+    "agent-council auto-update off": "auto-off",
     "agent-council update now": "now",
+    "agent-council update-check on": "check-on",
+    "agent-council update-check off": "check-off",
+    "agent-council update status": "status",
+    "agent-council update cleanup": "cleanup",
 }
-UPGRADE_ARGV = ["codex", "plugin", "marketplace", "upgrade", "agent-council", "--json"]
-ADD_ARGV = ["codex", "plugin", "add", PLUGIN_ID, "--json"]
-LIST_ARGV = ["codex", "plugin", "list", "--json"]
+REASONS = {
+    "network": "the marketplace could not be reached within the update-check limit",
+    "marketplace": "the marketplace response was invalid or did not identify Agent Council",
+    "local": "the loaded plugin metadata was invalid",
+    "storage": "private updater state could not be read or written safely",
+    "cli": "the host-managed CLI handoff was unavailable",
+    "unknown": "an unexpected updater error occurred",
+}
+
+
+class UpdateError(ValueError):
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason if reason in REASONS else "unknown"
 
 
 @functools.total_ordering
 class SemVer:
-    """SemVer 2.0 precedence, including prereleases and ignored build metadata."""
-
-    pattern = re.compile(
-        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-        r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
-        r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
-    )
+    pattern = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
 
     def __init__(self, value: str):
         if not isinstance(value, str) or len(value) > 256:
@@ -94,10 +108,8 @@ def decode_object(raw: bytes):
                 raise ValueError("Duplicate JSON key")
             result[key] = value
         return result
-
     def invalid_constant(value):
         raise ValueError("Non-finite JSON value")
-
     value = json.loads(raw, object_pairs_hook=unique_keys, parse_constant=invalid_constant)
     if not isinstance(value, dict):
         raise ValueError("Expected an object")
@@ -129,7 +141,7 @@ def atomic_write(path: Path, value: dict):
 
 @contextlib.contextmanager
 def update_lock(path: Path):
-    """OS-owned locks release on process death; never unlink an active lock inode."""
+    """Acquire a non-blocking, private advisory lock without unlinking it."""
     fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
     acquired = False
     try:
@@ -149,13 +161,12 @@ def update_lock(path: Path):
             pass
         yield acquired
     finally:
-        # Closing the descriptor releases the kernel lock, even after exceptions.
         os.close(fd)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ValueError("Marketplace redirects are not allowed")
+        raise UpdateError("marketplace")
 
 
 def download_marketplace():
@@ -166,81 +177,106 @@ def download_marketplace():
 
 
 def fetch_version():
-    # urllib's socket timeout alone permits a slow trickle to extend a read.
-    # A daemon worker also bounds DNS, connection setup, and the entire read.
-    output = []
-    errors = []
-
+    """Bound DNS, connection setup, and read time as one network operation."""
+    output, errors = [], []
     def download():
         try:
             output.append(download_marketplace())
         except Exception as exc:
             errors.append(exc)
-
     worker = threading.Thread(target=download, daemon=True)
     worker.start()
     worker.join(NETWORK_TIMEOUT)
     if worker.is_alive() or errors or not output:
-        raise ValueError("Marketplace request failed or timed out")
-    document = decode_object(output[0])
-    if document.get("name") != "agent-council" or not isinstance(document.get("plugins"), list):
-        raise ValueError("Marketplace identity mismatch")
-    matches = [item for item in document["plugins"] if isinstance(item, dict) and item.get("name") == "agent-council"]
-    if len(matches) != 1 or matches[0].get("source") != "./plugins/agent-council":
-        raise ValueError("Plugin identity mismatch")
-    version = matches[0].get("version")
-    SemVer(version)
-    metadata = document.get("metadata")
-    if not isinstance(metadata, dict) or metadata.get("version") != version:
-        raise ValueError("Marketplace version mismatch")
-    return version
+        raise UpdateError("network")
+    try:
+        document = decode_object(output[0])
+        if document.get("name") != "agent-council" or not isinstance(document.get("plugins"), list):
+            raise ValueError("identity")
+        matches = [item for item in document["plugins"] if isinstance(item, dict) and item.get("name") == "agent-council"]
+        if len(matches) != 1 or matches[0].get("source") != "./plugins/agent-council":
+            raise ValueError("identity")
+        version = matches[0].get("version")
+        SemVer(version)
+        metadata = document.get("metadata")
+        if not isinstance(metadata, dict) or metadata.get("version") != version:
+            raise ValueError("metadata")
+        return version
+    except (TypeError, ValueError, UnicodeError) as exc:
+        if isinstance(exc, UpdateError):
+            raise
+        raise UpdateError("marketplace") from exc
+
+
+def _remaining(deadline):
+    return max(0.0, deadline - time.monotonic())
+
+
+def _terminate_process_group(process, deadline):
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        remaining = _remaining(deadline)
+        if remaining:
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=remaining)
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            remaining = _remaining(deadline)
+            if remaining:
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    process.wait(timeout=remaining)
+    except (AttributeError, OSError, subprocess.SubprocessError) as exc:
+        raise UpdateError("cli") from exc
 
 
 def run_cli(argv, timeout=CLI_TIMEOUT):
-    """Bound memory and wall time, without interpreting CLI output as instructions."""
-    process = subprocess.Popen(argv, shell=False, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = []
-    errors = []
-
+    """Run a fixed host command with a bounded POSIX process-tree lifetime."""
+    if os.name == "nt" or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise UpdateError("cli")
+    deadline = time.monotonic() + timeout
+    process = subprocess.Popen(argv, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, start_new_session=True)
+    output, errors = [], []
     def read():
         try:
             output.append(process.stdout.read(MAX_BYTES + 1))
         except Exception as exc:
             errors.append(exc)
-
     reader = threading.Thread(target=read, daemon=True)
     reader.start()
-    deadline = time.monotonic() + timeout
     try:
-        reader.join(timeout)
+        reader.join(_remaining(deadline))
         if reader.is_alive() or errors or not output or len(output[0]) > MAX_BYTES:
-            raise ValueError("CLI timeout or output limit")
-        remaining = deadline - time.monotonic()
+            raise UpdateError("cli")
+        remaining = _remaining(deadline)
         if remaining <= 0 or process.wait(timeout=remaining) != 0:
-            raise ValueError("CLI failed")
+            raise UpdateError("cli")
         return output[0]
+    except subprocess.TimeoutExpired as exc:
+        raise UpdateError("cli") from exc
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.wait(timeout=2)
-        reader.join(2)
-        if not reader.is_alive():
-            process.stdout.close()
+        try:
+            _terminate_process_group(process, deadline)
+        finally:
+            reader.join(_remaining(deadline))
+            if not reader.is_alive():
+                process.stdout.close()
 
 
 def resolve_codex():
-    """Resolve the CLI once to an absolute executable path before any update action."""
     candidate = shutil.which("codex")
     if not candidate:
-        raise ValueError("Codex CLI not found")
+        raise UpdateError("cli")
     executable = Path(candidate).resolve()
     if not executable.is_absolute() or not executable.is_file() or not os.access(executable, os.X_OK):
-        raise ValueError("Codex CLI is not an executable file")
+        raise UpdateError("cli")
     return str(executable)
 
 
 def verify_installation(raw, version):
+    """Host callers may verify an install, but hooks never call a CLI."""
     installed = decode_object(raw).get("installed")
     if not isinstance(installed, list):
         raise ValueError("Missing installation list")
@@ -249,48 +285,151 @@ def verify_installation(raw, version):
         raise ValueError("Ambiguous installation identity")
     plugin = matches[0]
     if (plugin.get("name") != "agent-council" or plugin.get("marketplaceName") != "agent-council"
-            or plugin.get("installed") is not True or plugin.get("version") != version
+            or plugin.get("installed") is not True or plugin.get("enabled") is not True
+            or plugin.get("version") != version
             or plugin.get("marketplaceSource") != {"sourceType": "git", "source": MARKETPLACE_SOURCE}):
         raise ValueError("Installation verification failed")
 
 
-def install_version(current, target):
-    executable = resolve_codex()
-    list_argv = [executable, *LIST_ARGV[1:]]
-    deadline = time.monotonic() + INSTALL_TIMEOUT
+def local_version():
+    try:
+        local = read_object(ROOT / ".codex-plugin" / "plugin.json")
+        if local.get("name") != "agent-council":
+            raise ValueError("identity")
+        version = local.get("version")
+        SemVer(version)
+        return version
+    except (TypeError, ValueError) as exc:
+        raise UpdateError("local") from exc
 
-    def bounded(argv):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise ValueError("Aggregate installation timeout")
-        return run_cli(argv, timeout=min(CLI_TIMEOUT, remaining))
 
-    # Confirm that the installed marketplace alias still points to the fixed
-    # public repository before asking Codex to upgrade or install anything.
-    verify_installation(bounded(list_argv), current)
-    bounded([executable, *UPGRADE_ARGV[1:]])
-    bounded([executable, *ADD_ARGV[1:]])
-    verify_installation(bounded(list_argv), target)
+def settings_value(data: Path):
+    """Only literal false disables automatic checks. Legacy auto_update is inert."""
+    settings = read_object(data / SETTINGS_FILE)
+    return {"update_check": settings.get("update_check") is not False, "auto_update": False}
+
+
+def write_settings(data: Path, **changes):
+    """Settings locking is independent of the bounded network-check lock."""
+    with update_lock(data / SETTINGS_LOCK_FILE) as acquired:
+        if not acquired:
+            raise UpdateError("storage")
+        settings = settings_value(data)
+        settings.update(changes)
+        settings["auto_update"] = False
+        atomic_write(data / SETTINGS_FILE, settings)
 
 
 def notice(event, message):
-    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext":
-            "Visibly tell the user: " + message + " Continue normal Agent Council routing."}}
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": "Visibly tell the user: " + message + " Continue normal Agent Council routing."}}
 
 
 def codex_data(environ):
-    # PLUGIN_ROOT is Codex's documented marker. Codex may also supply the Claude
-    # compatibility marker; CLAUDE_PLUGIN_ROOT or CODEX_HOME alone proves nothing.
     if not environ.get("PLUGIN_ROOT") or not environ.get("PLUGIN_DATA"):
         return None
-    supplied = Path(environ["PLUGIN_ROOT"])
-    data = Path(environ["PLUGIN_DATA"])
+    supplied, data = Path(environ["PLUGIN_ROOT"]), Path(environ["PLUGIN_DATA"])
     if not supplied.is_absolute() or supplied.resolve() != ROOT or not data.is_absolute():
         return None
     data = data.resolve()
-    if data == ROOT or ROOT in data.parents:
-        return None
-    return data
+    return None if data == ROOT or ROOT in data.parents else data
+
+
+def failure_reason(exc):
+    return exc.reason if isinstance(exc, UpdateError) else "unknown"
+
+
+def status_notice(event, data):
+    """Read-only: no directory, lock, state, or network writes occur here."""
+    version = local_version()
+    state = read_object(data / STATE_FILE)
+    status = state.get("status") if isinstance(state.get("status"), str) else "no recorded check"
+    checked = state.get("checked_version")
+    if checked != version:
+        detail = "No check is recorded for this loaded version."
+    elif status == "available" and isinstance(state.get("available_version"), str):
+        detail = f"{state['available_version']} is available."
+    elif status == "failed":
+        detail = REASONS.get(state.get("reason"), REASONS["unknown"])
+    else:
+        detail = f"Last check status: {status}."
+    return notice(event, f"Agent Council update status, loaded version {version}. {detail}")
+
+
+def cleanup(data):
+    """Remove only known updater settings and state after both locks are held."""
+    with update_lock(data / SETTINGS_LOCK_FILE) as settings_acquired:
+        if not settings_acquired:
+            return False
+        with update_lock(data / LOCK_FILE) as check_acquired:
+            if not check_acquired:
+                return False
+            for name in OWNED_DATA_FILES:
+                with contextlib.suppress(FileNotFoundError):
+                    (data / name).unlink()
+            return True
+
+
+def check_for_update(event, data, manual=False):
+    """Network check only. No code path here invokes a CLI or changes plugin files."""
+    current = local_version()
+    with update_lock(data / LOCK_FILE) as acquired:
+        if not acquired:
+            return notice(event, "An Agent Council update check is already running. This task continues.") if manual else None
+        if not manual and not settings_value(data)["update_check"]:
+            return None
+        state, now = read_object(data / STATE_FILE), time.time()
+        previous = state.get("last_check_at")
+        if not manual and state.get("checked_version") == current and type(previous) in (int, float) and math.isfinite(previous):
+            if previous > now:
+                atomic_write(data / STATE_FILE, {"last_check_at": now, "status": state.get("status", "unknown"), "checked_version": current})
+                return None
+            if now - previous < DAY:
+                return None
+        state = {"last_check_at": now, "status": "checking", "checked_version": current}
+        atomic_write(data / STATE_FILE, state)
+        try:
+            target = fetch_version()
+            if SemVer(target) <= SemVer(current):
+                state.update(status="current")
+                result = notice(event, "Agent Council is up to date.") if manual else None
+            else:
+                state.update(status="available", available_version=target)
+                if manual:
+                    result = notice(event, f"Agent Council {target} is available. Run these host-managed CLI commands in order: `{HANDOFF_COMMAND}` then `{INSTALL_COMMAND}`. This hook did not install or modify the plugin.")
+                else:
+                    result = notice(event, f"Agent Council {current} is installed and {target} is available. Automatic installation is unavailable. Use the exact command `agent-council update now` for a fresh check and host-managed handoff.")
+        except Exception as exc:
+            reason = failure_reason(exc)
+            state.update(status="failed", reason=reason)
+            result = notice(event, f"The Agent Council update check could not be completed because {REASONS[reason]}. This task continues normally.") if manual else None
+        atomic_write(data / STATE_FILE, state)
+        return result
+
+
+def handle_action(event, action, data):
+    if action == "status":
+        try:
+            return status_notice(event, data)
+        except Exception:
+            return notice(event, "Agent Council update status is unavailable because the loaded plugin metadata could not be read safely.")
+    if action == "auto-on":
+        return notice(event, "Automatic installation is unavailable. No executable update consent was saved. Use `agent-council update now` for a fresh check and the host-managed CLI handoff.")
+    try:
+        data.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if action == "auto-off":
+            write_settings(data, auto_update=False)
+            return notice(event, "Automatic installation remains disabled. This opt-out was saved immediately and does not wait for an update check.")
+        if action == "check-on":
+            write_settings(data, update_check=True)
+            return notice(event, "Automatic daily update checks are enabled. Hooks will only notify, never install.")
+        if action == "check-off":
+            write_settings(data, update_check=False)
+            return notice(event, "Automatic daily update checks are disabled. Hooks will make no automatic marketplace requests; `agent-council update now` still checks on demand.")
+        if action == "cleanup":
+            return notice(event, "Updater-owned settings and check state were removed. No plugin files were changed.") if cleanup(data) else notice(event, "Updater cleanup could not safely acquire its private locks. No files were removed.")
+        return check_for_update(event, data, manual=True)
+    except Exception:
+        return notice(event, "Agent Council could not safely access its private updater settings or state. This task continues normally.")
 
 
 def handle_hook(event, payload, environ):
@@ -299,63 +438,21 @@ def handle_hook(event, payload, environ):
     data = codex_data(environ)
     if data is None:
         return None
-    action = COMMANDS.get(payload.get("prompt")) if isinstance(payload.get("prompt"), str) else None
-    if event == "UserPromptSubmit" and action is None:
+    prompt = payload.get("prompt") if isinstance(payload.get("prompt"), str) else None
+    action = COMMANDS.get(prompt)
+    if event == "UserPromptSubmit":
+        if action is not None:
+            return handle_action(event, action, data)
+        if prompt is not None and prompt.lower().startswith("agent-council"):
+            return notice(event, "That is not an executable updater command. Use an exact command: `agent-council update now`, `agent-council update-check on`, `agent-council update-check off`, `agent-council update status`, `agent-council update cleanup`, or `agent-council auto-update off`.")
         return None
     try:
+        if not settings_value(data)["update_check"]:
+            return None
         data.mkdir(mode=0o700, parents=True, exist_ok=True)
-        with update_lock(data / LOCK_FILE) as acquired:
-            if not acquired:
-                return notice(event, "An Agent Council update check is already running; this task continues.") if action else None
-            settings = read_object(data / SETTINGS_FILE)
-            if action in ("on", "off"):
-                atomic_write(data / SETTINGS_FILE, {"auto_update": action == "on"})
-                message = ("Agent Council automatic updates are enabled. Daily task-start checks may install updates; changes apply to the next task."
-                           if action == "on" else "Agent Council automatic updates are disabled. Daily checks only notify you about updates.")
-                return notice(event, message)
-            state = read_object(data / STATE_FILE)
-            now = time.time()
-            previous = state.get("last_check_at")
-            if action != "now" and state.get("status") == "checking":
-                state["status"] = "interrupted"
-                atomic_write(data / STATE_FILE, state)
-                return notice(event, "The previous Agent Council update check was interrupted. This task continues normally. Use `agent-council update now` to retry immediately.")
-            if action != "now" and type(previous) in (int, float) and math.isfinite(previous):
-                if previous > now:
-                    # Rebase a future timestamp once, without triggering repeated requests.
-                    state["last_check_at"] = now
-                    atomic_write(data / STATE_FILE, state)
-                    return None
-                if now - previous < DAY:
-                    return None
-            # Record attempts before I/O, so failures and interrupted attempts also
-            # respect the rolling daily limit. Consent lives in a separate file.
-            state = {"last_check_at": now, "status": "checking"}
-            atomic_write(data / STATE_FILE, state)
-            try:
-                local = read_object(ROOT / ".codex-plugin" / "plugin.json")
-                if local.get("name") != "agent-council":
-                    raise ValueError("Local identity mismatch")
-                current = local.get("version")
-                SemVer(current)
-                target = fetch_version()
-                if SemVer(target) <= SemVer(current):
-                    state["status"] = "current"
-                    result = notice(event, "Agent Council is up to date.") if action else None
-                elif action == "now" or settings.get("auto_update") is True:
-                    install_version(current, target)
-                    state.update(status="installed", installed_version=target)
-                    result = notice(event, f"Agent Council {target} was installed and verified. It applies to the next task; this task continues using its loaded version.")
-                else:
-                    state.update(status="available", available_version=target)
-                    result = notice(event, f"Agent Council {current} is installed and {target} is available. Automatic updates are off. Use the exact command `agent-council update now` for a one-time update or `agent-council auto-update on` to enable automatic updates.")
-            except Exception:
-                state["status"] = "failed"
-                result = notice(event, "The Agent Council update check or installation could not be completed. This task continues normally. The next automatic check is in 24 hours; `agent-council update now` retries immediately.")
-            atomic_write(data / STATE_FILE, state)
-            return result
+        return check_for_update(event, data, manual=False)
     except Exception:
-        return notice(event, "Agent Council could not access its update settings or state. This task continues normally.")
+        return None
 
 
 def main(argv=None):
@@ -370,7 +467,6 @@ def main(argv=None):
         if result is not None:
             print(json.dumps(result))
     except Exception:
-        # Hook failures must never interrupt routing or turn into CLI tracebacks.
         if event in ("SessionStart", "UserPromptSubmit"):
             print(json.dumps(notice(event, "Agent Council skipped an unavailable update check. This task continues normally.")))
     return 0

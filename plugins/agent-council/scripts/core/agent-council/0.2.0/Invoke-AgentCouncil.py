@@ -8,6 +8,7 @@ verify a provider attestation, authorize UAT, or make an operational closure.
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager, nullcontext
 import hashlib
 import json
@@ -67,6 +68,8 @@ _BEHAVIORAL_EVIDENCE_KINDS = {
 }
 _BEHAVIORAL_EVIDENCE_SCHEMA = "agent-council.behavioral-evidence/v2"
 _MAX_JSON_DEPTH = 64
+_PENDING_JOURNAL = ".agent-council.pending.v1.json"
+_PENDING_SCHEMA = "agent-council.pending-transaction/v1"
 
 
 class _JsonDepthError(ValueError):
@@ -1283,6 +1286,17 @@ def _file_sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _sync_parent(path: Path) -> None:
+    """Make a POSIX directory entry durable after a file create or replace."""
+    if os.name == "nt":
+        return
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _write_exclusive(path: Path, value: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -1292,6 +1306,9 @@ def _write_exclusive(path: Path, value: bytes) -> None:
     except FileExistsError as exc:
         raise AuthoringError("DUPLICATE_EVENT_REFUSED") from exc
     path.chmod(0o400)
+    with path.open("rb") as handle:
+        os.fsync(handle.fileno())
+    _sync_parent(path)
 
 
 def _write_atomic(path: Path, value: bytes) -> None:
@@ -1302,6 +1319,271 @@ def _write_atomic(path: Path, value: bytes) -> None:
     with temporary.open("xb") as handle:
         handle.write(value); handle.flush(); os.fsync(handle.fileno())
     os.replace(temporary, path)
+    _sync_parent(path)
+
+
+def _pending_path(root: Path) -> Path:
+    return root / _PENDING_JOURNAL
+
+
+def _relative_target(root: Path, path: Path) -> str:
+    """Confine a journal target to the already-validated case root."""
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise AuthoringError("TRANSACTION_PATH_REFUSED") from exc
+    if not relative.parts or relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise AuthoringError("TRANSACTION_PATH_REFUSED")
+    return relative.as_posix()
+
+
+def _journal_target(root: Path, path: Path, value: bytes, policy: str) -> dict[str, str]:
+    if policy not in {"immutable", "replace"} or not isinstance(value, bytes):
+        raise AuthoringError("SCHEMA_VALIDATION_FAILED")
+    return {
+        "path": _relative_target(root, path),
+        "sha256": hashlib.sha256(value).hexdigest(),
+        "bytes_b64": base64.b64encode(value).decode("ascii"),
+        "policy": policy,
+    }
+
+
+def _decode_pending_journal(root: Path) -> dict[str, Any]:
+    """Read a fully self-contained recovery plan, refusing every ambiguity."""
+    path = _pending_path(root)
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise AuthoringError("PENDING_TRANSACTION_INVALID")
+        raw = path.read_bytes()
+        journal = _decode_json(raw.decode("utf-8"))
+    except AuthoringError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, _JsonDepthError, ValueError) as exc:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID") from exc
+    if not isinstance(journal, dict) or set(journal) != {"schema_version", "old_case_sha256", "state", "targets"} or journal.get("schema_version") != _PENDING_SCHEMA or not _sha(journal.get("old_case_sha256")):
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    state = journal.get("state")
+    targets = journal.get("targets")
+    if not isinstance(state, dict) or set(state) != {"sha256", "bytes_b64", "policy"} or state.get("policy") != "replace" or not _sha(state.get("sha256")) or not isinstance(state.get("bytes_b64"), str) or not isinstance(targets, list):
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    try:
+        state_bytes = base64.b64decode(state["bytes_b64"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID") from exc
+    if hashlib.sha256(state_bytes).hexdigest() != state["sha256"]:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    seen: set[str] = set()
+    checked: list[dict[str, Any]] = []
+    for target in targets:
+        if not isinstance(target, dict) or set(target) != {"path", "sha256", "bytes_b64", "policy"} or not isinstance(target.get("path"), str) or not _sha(target.get("sha256")) or not isinstance(target.get("bytes_b64"), str) or target.get("policy") != "immutable":
+            raise AuthoringError("PENDING_TRANSACTION_INVALID")
+        relative = Path(target["path"])
+        if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts) or target["path"] != relative.as_posix() or target["path"] in seen:
+            raise AuthoringError("TRANSACTION_PATH_REFUSED")
+        # Immutable case artifacts are the only durable pre-state targets.
+        if relative.parts[0] not in {"events", "evidence", "requests"} or relative.suffix != ".json":
+            raise AuthoringError("TRANSACTION_PATH_REFUSED")
+        try:
+            value = base64.b64decode(target["bytes_b64"], validate=True)
+        except (ValueError, TypeError) as exc:
+            raise AuthoringError("PENDING_TRANSACTION_INVALID") from exc
+        if hashlib.sha256(value).hexdigest() != target["sha256"]:
+            raise AuthoringError("PENDING_TRANSACTION_INVALID")
+        seen.add(target["path"])
+        checked.append({"path": target["path"], "value": value, "policy": target["policy"]})
+    journal["_state_bytes"] = state_bytes
+    journal["_targets"] = checked
+    return journal
+
+
+def _fault_after_boundary(boundary: str) -> None:
+    """Test-only deterministic interruption after a durable transaction boundary."""
+    if os.environ.get("AGENT_COUNCIL_TEST_FAIL_AFTER_BOUNDARY") == boundary:
+        raise RuntimeError("injected durable-boundary failure")
+
+
+def _publish_immutable_idempotently(path: Path, value: bytes) -> None:
+    """Publish immutable bytes once, accepting only an exact replay."""
+    try:
+        if path.exists() or path.is_symlink():
+            if path.is_symlink() or not path.is_file() or path.read_bytes() != value:
+                raise AuthoringError("PENDING_TRANSACTION_CONFLICT")
+            return
+        _write_exclusive(path, value)
+    except AuthoringError:
+        raise
+    except OSError as exc:
+        raise AuthoringError("PENDING_TRANSACTION_CONFLICT") from exc
+
+
+def _recover_pending_transaction(root: Path) -> bool:
+    """Finish one exact pending transaction while the stable case lock is held."""
+    path = _pending_path(root)
+    if not path.exists() and not path.is_symlink():
+        return False
+    journal = _decode_pending_journal(root)
+    try:
+        current = (root / "case.json").read_bytes()
+    except OSError as exc:
+        raise AuthoringError("PENDING_TRANSACTION_CONFLICT") from exc
+    old_digest = journal["old_case_sha256"]
+    state_bytes = journal["_state_bytes"]
+    current_digest = hashlib.sha256(current).hexdigest()
+    new_digest = hashlib.sha256(state_bytes).hexdigest()
+    if current_digest not in {old_digest, new_digest}:
+        raise AuthoringError("PENDING_TRANSACTION_CONFLICT")
+    semantic_problem = _pending_semantics_problem(root, journal, current)
+    if semantic_problem:
+        raise AuthoringError(semantic_problem)
+    for index, target in enumerate(journal["_targets"], start=1):
+        _publish_immutable_idempotently(root / target["path"], target["value"])
+        _fault_after_boundary(f"target-{index}")
+    if current_digest == old_digest:
+        _write_atomic(root / "case.json", state_bytes)
+    elif current != state_bytes:
+        raise AuthoringError("PENDING_TRANSACTION_CONFLICT")
+    _fault_after_boundary("case")
+    try:
+        path.unlink()
+        _sync_parent(path)
+    except OSError as exc:
+        raise AuthoringError("PENDING_TRANSACTION_CONFLICT") from exc
+    return True
+
+
+def _write_pending_transaction(root: Path, state_bytes: bytes, targets: list[dict[str, str]]) -> None:
+    """Persist the complete validated write-ahead plan before any target write."""
+    try:
+        old_case = (root / "case.json").read_bytes()
+    except OSError as exc:
+        raise AuthoringError("CASE_NOT_FOUND") from exc
+    journal = {
+        "schema_version": _PENDING_SCHEMA,
+        "old_case_sha256": hashlib.sha256(old_case).hexdigest(),
+        "state": {"sha256": hashlib.sha256(state_bytes).hexdigest(), "bytes_b64": base64.b64encode(state_bytes).decode("ascii"), "policy": "replace"},
+        "targets": targets,
+    }
+    try:
+        serialized = _canonical(journal) + b"\n"
+        # Validate the exact bytes to be committed, before the journal exists.
+        _decode_pending_journal_bytes(root, serialized)
+    except AuthoringError:
+        raise
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise AuthoringError("SCHEMA_VALIDATION_FAILED") from exc
+    _write_atomic(_pending_path(root), serialized)
+
+
+def _decode_pending_journal_bytes(root: Path, raw: bytes) -> None:
+    """Validate journal content without making the pending file visible."""
+    try:
+        journal = _decode_json(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, _JsonDepthError, ValueError) as exc:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID") from exc
+    if not isinstance(journal, dict) or journal.get("schema_version") != _PENDING_SCHEMA:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    if set(journal) != {"schema_version", "old_case_sha256", "state", "targets"} or not _sha(journal.get("old_case_sha256")):
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    state, targets = journal.get("state"), journal.get("targets")
+    if not isinstance(state, dict) or set(state) != {"sha256", "bytes_b64", "policy"} or state.get("policy") != "replace" or not _sha(state.get("sha256")) or not isinstance(state.get("bytes_b64"), str) or not isinstance(targets, list):
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    try:
+        state_bytes = base64.b64decode(state["bytes_b64"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID") from exc
+    if hashlib.sha256(state_bytes).hexdigest() != state["sha256"]:
+        raise AuthoringError("PENDING_TRANSACTION_INVALID")
+    seen: set[str] = set()
+    for target in targets:
+        if not isinstance(target, dict) or set(target) != {"path", "sha256", "bytes_b64", "policy"} or not isinstance(target.get("path"), str) or not _sha(target.get("sha256")) or not isinstance(target.get("bytes_b64"), str) or target.get("policy") != "immutable":
+            raise AuthoringError("PENDING_TRANSACTION_INVALID")
+        relative = Path(target["path"])
+        if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts) or target["path"] != relative.as_posix() or target["path"] in seen or relative.parts[0] not in {"events", "evidence", "requests"} or relative.suffix != ".json":
+            raise AuthoringError("TRANSACTION_PATH_REFUSED")
+        try:
+            value = base64.b64decode(target["bytes_b64"], validate=True)
+        except (ValueError, TypeError) as exc:
+            raise AuthoringError("PENDING_TRANSACTION_INVALID") from exc
+        if hashlib.sha256(value).hexdigest() != target["sha256"]:
+            raise AuthoringError("PENDING_TRANSACTION_INVALID")
+        seen.add(target["path"])
+
+
+def _pending_semantics_problem(root: Path, journal: dict[str, Any], current: bytes) -> str | None:
+    """Bind a recovery plan to valid state, immutable history, and artifacts."""
+    state_bytes = journal["_state_bytes"]
+    try:
+        proposed = _decode_json(state_bytes.decode("utf-8"))
+        if _canonical(proposed) + b"\n" != state_bytes or not isinstance(proposed, dict):
+            return "PENDING_TRANSACTION_INVALID"
+        issue = _authoring_state_problem(proposed)
+        if issue:
+            return issue
+        if proposed.get("case_root") != str(root.resolve()):
+            return "TRANSACTION_PATH_REFUSED"
+        case = {"case_id": proposed["case_id"], "identity": _local_identity(proposed)}
+        previous = None
+        seen_ids: set[str] = set(); seen_hashes: set[str] = set()
+        for event in proposed["events"]:
+            if not _event_valid(event, case) or _authoring_payload_problem(event.get("record_type"), event.get("payload")) or event["payload"].get("previous_event_sha256") != previous or event["event_id"] in seen_ids or event["event_sha256"] in seen_hashes:
+                return "PENDING_TRANSACTION_INVALID"
+            previous = event["event_sha256"]
+            seen_ids.add(event["event_id"]); seen_hashes.add(event["event_sha256"])
+        old = _decode_json(current.decode("utf-8"))
+        recovering_old_state = hashlib.sha256(current).hexdigest() == journal["old_case_sha256"]
+        if recovering_old_state:
+            old = _normalize_authoring_state(old)
+            if _authoring_state_problem(old) or proposed.get("project_root") != old.get("project_root") or proposed["events"][:len(old["events"])] != old["events"]:
+                return "PENDING_TRANSACTION_CONFLICT"
+        targets = {target["path"]: target["value"] for target in journal["_targets"]}
+        new_events = proposed["events"][len(old.get("events", [])):] if recovering_old_state and isinstance(old, dict) and isinstance(old.get("events"), list) else []
+        expected_events = {f"events/{event['event_id']}.json": _canonical(event) + b"\n" for event in new_events}
+        if recovering_old_state:
+            if any(targets.get(path) != value for path, value in expected_events.items()) or any(path.startswith("events/") and path not in expected_events for path in targets):
+                return "PENDING_TRANSACTION_INVALID"
+        else:
+            event_bytes = {f"events/{event['event_id']}.json": _canonical(event) + b"\n" for event in proposed["events"]}
+            if any(path.startswith("events/") and event_bytes.get(path) != value for path, value in targets.items()) or not _immutable_events({"case_root": str(root)}, proposed["events"]) or not _evidence_integrity_valid({"case_root": str(root)}, proposed["events"]):
+                return "PENDING_TRANSACTION_CONFLICT"
+        expected_artifacts: dict[str, bytes] = {}
+        if recovering_old_state:
+            for event in new_events:
+                payload = event["payload"]
+                if event["record_type"] == "evidence" and isinstance(payload.get("path"), str):
+                    path = payload["path"]
+                    value = targets.get(path)
+                    if value is None or hashlib.sha256(value).hexdigest() != payload.get("sha256"):
+                        return "PENDING_TRANSACTION_INVALID"
+                    expected_artifacts[path] = value
+            old_plans = old.get("dispatch_plans", {}) if isinstance(old, dict) else {}
+            for nonce, plan in proposed["dispatch_plans"].items():
+                if nonce in old_plans:
+                    continue
+                request = {key: value for key, value in plan.items() if key not in {"request_sha256", "consumed", "invalidated"}}
+                path = f"requests/{nonce}.json"
+                value = targets.get(path)
+                if value != _canonical(request) + b"\n" or plan.get("request_sha256") != _digest(request):
+                    return "PENDING_TRANSACTION_INVALID"
+                expected_artifacts[path] = value
+            if {path for path in targets if not path.startswith("events/")} != set(expected_artifacts):
+                return "PENDING_TRANSACTION_INVALID"
+        else:
+            evidence = {event["payload"].get("path"): event["payload"].get("sha256") for event in proposed["events"] if event["record_type"] == "evidence" and isinstance(event["payload"].get("path"), str)}
+            requests = {}
+            for nonce, plan in proposed["dispatch_plans"].items():
+                request = {key: value for key, value in plan.items() if key not in {"request_sha256", "consumed", "invalidated"}}
+                requests[f"requests/{nonce}.json"] = _canonical(request) + b"\n"
+            for path, value in targets.items():
+                if path.startswith("events/"):
+                    continue
+                if path.startswith("evidence/") and evidence.get(path) == hashlib.sha256(value).hexdigest():
+                    continue
+                if path.startswith("requests/") and requests.get(path) == value:
+                    continue
+                return "PENDING_TRANSACTION_INVALID"
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError, _JsonDepthError, RecursionError):
+        return "PENDING_TRANSACTION_INVALID"
+    return None
 
 
 def _read_local_case(root: Path) -> dict[str, Any]:
@@ -1366,21 +1648,21 @@ def _commit_prepared_transaction(
     transaction: dict[str, Any],
     artifacts: tuple[tuple[Path, bytes], ...] = (),
 ) -> None:
-    """Commit prevalidated supporting artifacts, immutable events, then state.
-
-    Everything that can return a semantic refusal is checked before the first
-    persistent write.  State is intentionally last, so it never references an
-    event or evidence artifact that was not successfully written.
-    """
+    """Write-ahead commit: immutable targets first, exact case state last."""
     events = transaction["events"]
     event_bytes = transaction["event_bytes"]
-    if any(path.exists() for path, _ in artifacts) or any((root / "events" / f"{event['event_id']}.json").exists() for event in events):
+    targets = [_journal_target(root, path, value, "immutable") for path, value in artifacts]
+    targets.extend(_journal_target(root, root / "events" / f"{event['event_id']}.json", value, "immutable") for event, value in zip(events, event_bytes))
+    paths = [target["path"] for target in targets]
+    if len(paths) != len(set(paths)):
         raise AuthoringError("DUPLICATE_EVENT_REFUSED")
-    for path, value in artifacts:
-        _write_exclusive(path, value)
-    for event, value in zip(events, event_bytes):
-        _write_exclusive(root / "events" / f"{event['event_id']}.json", value)
-    _write_atomic(root / "case.json", transaction["state_bytes"])
+    # An extant exact target is an interrupted replay only if a journal says
+    # so. Normal authoring never silently adopts caller-created files.
+    if any((root / target["path"]).exists() or (root / target["path"]).is_symlink() for target in targets):
+        raise AuthoringError("DUPLICATE_EVENT_REFUSED")
+    _write_pending_transaction(root, transaction["state_bytes"], targets)
+    _fault_after_boundary("journal")
+    _recover_pending_transaction(root)
     state.clear()
     state.update(transaction["state"])
 
@@ -2177,6 +2459,8 @@ def main(argv: list[str] | None = None) -> int:
     interrupt.add_argument("--case-root", required=True, type=Path); interrupt.add_argument("--project-root", required=True, type=Path); interrupt.add_argument("--processes-json", required=True)
     resume = commands.add_parser("resume", help="exactly resume a reconciled interruption in a new cycle")
     resume.add_argument("--case-root", required=True, type=Path); resume.add_argument("--project-root", required=True, type=Path); resume.add_argument("--interruption-id", required=True)
+    recover = commands.add_parser("recover-case", help="finish one pending durable case transaction")
+    recover.add_argument("--case-root", required=True, type=Path); recover.add_argument("--project-root", required=True, type=Path)
     args = parser.parse_args(argv)
     if args.command == "self-test":
         return _self_test()
@@ -2188,9 +2472,6 @@ def main(argv: list[str] | None = None) -> int:
             parsed["candidate"] = _candidate_json_argument(args.candidate_json)
         elif args.command == "cycle-start":
             parsed["candidate"] = _candidate_json_argument(args.candidate_json)
-            state = _read_local_case(args.case_root)
-            if _cycle_candidate_material(state, parsed["candidate"])[3]:
-                raise AuthoringError("CANDIDATE_UNCHANGED")
         elif args.command == "append":
             parsed["payload"] = _json_argument(args.payload_json)
         elif args.command == "evidence-add":
@@ -2207,8 +2488,19 @@ def main(argv: list[str] | None = None) -> int:
         with lock:
             if hasattr(args, "case_root") and args.command != "init-case":
                 _safe_case_tree(args.case_root)
+                # Recovery can publish state and remove a journal, so confirm
+                # the caller owns this pinned case before it can mutate.
                 _assert_pinned_project_root(args.case_root, args.project_root)
+                recovered = _recover_pending_transaction(args.case_root)
+                _assert_pinned_project_root(args.case_root, args.project_root)
+                if args.command == "recover-case":
+                    result = _outcome("accepted", "CASE_RECOVERED" if recovered else "NO_PENDING_TRANSACTION")
+                else:
+                    result = None
+            else:
+                result = None
             if args.command == "init-case": result = init_case(args.case_root, args.project_root, args.case_id, args.route, candidate=parsed.get("candidate"), activation_class=args.activation_class, case_kind=args.case_kind)
+            elif args.command == "recover-case": pass
             elif args.command == "build-bundle": result = build_bundle(args.case_root)
             elif args.command == "append":
                 if args.record_type in _PROTECTED: raise AuthoringError("PROTECTED_RECORD_REFUSED")
@@ -2244,8 +2536,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if document.get("authoring_schema_version") == "agent-council.authoring/v2":
         try:
-            document = _read_local_case(args.case_json.parent)
-            result = evaluate_contract_case(_authoring_document(document, args.case_json.parent))
+            pending = _pending_path(args.case_json.parent)
+            if pending.exists() or pending.is_symlink():
+                result = _refuse("RECOVERY_REQUIRED")
+            else:
+                document = _read_local_case(args.case_json.parent)
+                result = evaluate_contract_case(_authoring_document(document, args.case_json.parent))
         except (AuthoringError, json.JSONDecodeError, TypeError, ValueError, KeyError, AttributeError, IndexError, OSError, RuntimeError, RecursionError) as exc:
             result = _refuse(exc.code if isinstance(exc, AuthoringError) else "SCHEMA_VALIDATION_FAILED")
     else:
