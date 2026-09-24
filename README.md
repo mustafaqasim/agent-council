@@ -1,99 +1,107 @@
 # Agent Council
 
-Use different AI models from one chat, without switching them by hand.
+Use the right AI model for each part of a task, without leaving your chat.
+
+Agent Council helps Codex and Claude Code decide when to:
+
+- Do the work in the main chat.
+- Send routine work to a cheaper model.
+- Send harder work to a stronger model.
+- Add an independent review when the work is risky.
 
 ![Agent Council routes each coding subtask to an appropriate model based on complexity, risk, and cost](assets/agent-council.png)
 
-Agent Council lets your main Codex or Claude Code chat hand a subtask to the model tier that fits the work:
+## Why use it
 
-- A fast, economical model for routine checks and evidence gathering.
-- A technical model for a bounded implementation.
-- A stronger model for difficult diagnosis, review, or architecture.
-- A top-tier model for routing and final decisions.
+Using one model for everything creates waste.
 
-In Codex, that can mean Luna for routine work, Terra for implementation, Sol for review, and Astra for the hardest decisions.
+A premium model can spend expensive tokens on simple checks. A cheaper model can get stuck on a hard problem and burn tokens on retries. Switching models by hand fixes this, but it breaks your flow.
 
-You stay in the same chat. The main agent decides when to work directly, when to delegate, which model tier fits each subtask, and when stronger governance is necessary.
+Agent Council handles that choice inside the chat. You keep one conversation. The main agent keeps control of the task and brings in another model only when it is useful.
 
-This applies beyond coding. Research, analysis, strategy, business planning, document work, implementation, and review can all contain subtasks with very different levels of difficulty.
+It works for coding, research, analysis, strategy, business planning, documents, and reviews.
 
-## Why this exists
+## How it works
 
-Manually changing models creates two kinds of waste:
+For each request, Agent Council picks one path:
 
-- Keep a premium model running and you spend expensive tokens on easy work.
-- Keep a cheaper model on a hard problem and you can burn through retries before escalating anyway.
+- **Work directly:** The task is small or delegation would add more overhead than value.
+- **Delegate a subtask:** A suitable model handles a clear piece of work. The main chat keeps the context and final answer.
+- **Add safeguards:** Risky work gets stronger routing, separate review, and evidence checks.
 
-Then, once the hard part is over, you have to remember to switch back down. The repeated handoff breaks your flow and makes one task feel like several separate sessions.
+You see which model is assigned and why before delegated work starts.
 
-Agent Council moves that routing decision into the chat. It can escalate when the work becomes harder, use a cheaper worker for routine steps, and downshift again when the difficult part is complete. When the work carries material risk, it can also require a separate reviewer and evidence before completion.
+Agent Council does not read your remaining quota or predict the exact cost. It routes from the work it can see: difficulty, risk, and likely delegation overhead.
 
-It does not read your remaining quota or predict cost. It routes from the task's complexity and risk.
+## Model routing examples
 
-## Demo Screenshots
+In Codex, routine work can go to Luna, implementation to Terra, review to Sol, and the hardest decisions to Astra.
 
-Searching for cheapest Microsoft Surface deals in a **Sol High** session delegate the work to cheaper **Terra Medium** sub-agents, keeping Sol for synthesis and validation.
+In Claude Code, routine work can go to Haiku 4.5, implementation to Sonnet 5, difficult review to Opus 5.5, and the hardest decisions to Fable 5.1. Opus 5.5 replaces Opus 5 as the qualified operational model.
 
-<img width="574" height="1280" alt="image" src="https://github.com/user-attachments/assets/f09275ea-31a5-4be1-b1ef-ad0081e06f6b" />
+The available models still depend on your account and host.
 
+## Example
 
-When it doesn't make sense to delegate, it doesn't force.
+A search for Microsoft Surface deals started in a **Sol High** chat. Agent Council sent price research and device-fit checks to **Terra Medium** workers. Sol stayed focused on the final recommendation.
 
-<img width="1092" height="366" alt="Recording 2026-09-23 at 22 39 40@2x" src="https://github.com/user-attachments/assets/36512129-e21a-482d-aa2a-73b4a1ba0352" />
+<img width="574" height="1280" alt="Agent Council delegates Surface deal research from Sol High to Terra Medium workers" src="https://github.com/user-attachments/assets/f09275ea-31a5-4be1-b1ef-ad0081e06f6b" />
 
+When delegation would not help, Agent Council keeps the work in the main chat.
 
-## What happens during a task
+<img width="1092" height="366" alt="Agent Council chooses direct execution for a small task" src="https://github.com/user-attachments/assets/36512129-e21a-482d-aa2a-73b4a1ba0352" />
 
-Agent Council first chooses one of three paths:
+## Safeguards for risky work
 
-- **Direct execution**: the request is too small or tightly coupled for delegation to save time or tokens.
-- **Lightweight routing**: bounded research, drafting, implementation, analysis, or review is delegated to the lowest qualified model tier. No case files or governance ceremony are created.
-- **Governed case**: a qualifying risk needs formal routing, independent review, and evidence gates.
+Most requests do not need a formal Council case. Higher-risk work does.
 
-You see the routing decision and each delegated model before work begins. A substantive consulting-offer task, for example, can send source inventory to a worker model, structured offer design to a technical model, and final integration or challenge review to a stronger model.
+- **R1:** A narrow automation repair with a known cause.
+- **R2:** An unexpected failure, uncertain design, or material design decision.
+- **R3:** An architecture implementation, shared contract, safety boundary, lifecycle or acceptance change, repeated unresolved failure, or model qualification problem.
 
-For governed work, the main chat classifies the current piece of work:
+Read-only architecture review and routine checks do not become R3 just because they mention architecture or risk.
 
-- **R1**: a bounded fix with a known cause and narrow impact.
-- **R2**: an unexpected failure or uncertain composition.
-- **R3**: architecture, shared contracts, safety boundaries, or repeated unresolved failures.
-
-That route tells the chat which model tier and checks are required. Agent Council records the routing decision, checks returned model identity and evidence links, and refuses to close the case when required checks are missing or stale.
-
-The local engine uses only the Python standard library.
+For a governed case, Agent Council records the route, model identity, and evidence. It will not mark the case complete when a required test or independent review is missing.
 
 ## Install
 
-**Codex:**
+### Codex
 
 ```sh
 codex plugin marketplace add mustafaqasim/agent-council --ref main
 codex plugin add agent-council@agent-council
 ```
 
-**Claude Code:**
+### Claude Code
 
 ```sh
 claude plugin marketplace add mustafaqasim/agent-council
 claude plugin install agent-council@agent-council
 ```
 
-Start a new task after installation so the skill loads.
+Start a new task after installation so the plugin can load.
 
-To update from the public repository:
+Do not install the repository root as a personal plugin. The marketplace installs the package under `plugins/agent-council`.
+
+## Update
+
+### Codex
 
 ```sh
 codex plugin marketplace upgrade agent-council
 codex plugin add agent-council@agent-council
 ```
 
-Do not install the repository root as a personal plugin. The public marketplace resolves the packaged plugin under `plugins/agent-council`.
+### Claude Code
 
-## Update checks
+```sh
+claude plugin marketplace update agent-council
+claude plugin update agent-council@agent-council
+```
 
-On a trusted local Codex installation, Agent Council checks its public GitHub marketplace for a newer version at most once every 24 hours. The default is notification only. A newer version produces a clear prompt with the installed and available versions.
+Agent Council can check the public Codex marketplace once a day. It only shows an update prompt. It never installs an update by itself.
 
-Use these exact messages in a Codex task:
+Use these messages in a Codex task:
 
 ```text
 agent-council update now
@@ -103,22 +111,22 @@ agent-council update status
 agent-council update cleanup
 ```
 
-`update now` performs a fresh check and, when an update exists, gives you the exact two host-managed Codex commands to run: first refresh the marketplace, then install the current plugin release. The hook itself does not install or modify the plugin. Automatic installation is unavailable because a hook prompt cannot prove authenticated consent or bind approval to immutable package bytes. Legacy `auto-update on` settings are ignored, and that command now explains the limitation instead of saving executable consent.
+`update now` checks the marketplace version on `main` and gives you the two Codex commands to run. GitHub Releases are not used for this check.
 
-`update-check off` disables automatic marketplace requests. Manual `update now` checks still work. `update status` reads local updater state without making a network request, and `update cleanup` removes only updater-owned settings and check state. It does not remove the plugin or Council cases. To remove the plugin itself, use the host plugin manager.
+`update-check off` stops automatic marketplace requests. Manual checks still work. `update cleanup` removes only updater settings and check state. It does not remove the plugin or Council cases.
 
-An update applies to the next task. The active task continues using the version it loaded at startup. Update-check failures do not block Agent Council routing. Claude Code users continue to update through the Claude plugin manager.
+An update takes effect in a new task. Claude Code users update through the Claude plugin manager.
 
 ## Activation
 
-Agent Council is a layer that sits above your other skills, not an alternative you pick instead of them. A domain skill (lab-building, planning, brainstorming, code review) still does the work; Agent Council decides which model tier should make the hard calls and whether governance is required.
+Agent Council works alongside your other skills. Those skills still do their normal jobs. Agent Council decides whether another model should handle part of the work and whether extra review is needed.
 
-- **Claude Code:** activation is automatic after its packaged hooks are trusted. The routing check runs before the agent selects a skill, so a strong domain skill no longer bypasses it.
-- **Local Codex:** enabled plugins can load packaged lifecycle hooks after the user reviews and trusts them. Agent Council uses those hooks for activation and daily update checks. Restart or start a new task after installation so the hooks load.
-- **Codex fallback:** add the routing directive to your `AGENTS.md` for persistent coverage, including environments where hook scripts are unavailable. See [codex/routing-directive.md](plugins/agent-council/codex/routing-directive.md).
-- **Cloud and web sessions:** hooks do not run there. Use the `AGENTS.md` directive, which is persistent context loaded on every task.
+- **Claude Code:** Packaged hooks run the routing check after you trust them.
+- **Local Codex:** Enabled plugins can load packaged hooks after you review and trust them. Start a new task after installation.
+- **Codex fallback:** Add the [routing directive](plugins/agent-council/codex/routing-directive.md) to `AGENTS.md` when hooks are unavailable.
+- **Cloud and web sessions:** Hooks do not run there. Use the `AGENTS.md` directive.
 
-You can always invoke it explicitly with `/agent-council` (Claude Code) to guarantee the check.
+In Claude Code, `/agent-council` always requests a routing check.
 
 For a local, read-only activation report:
 
@@ -126,42 +134,43 @@ For a local, read-only activation report:
 python3 plugins/agent-council/scripts/Diagnose-AgentCouncil.py
 ```
 
-The report can verify package files, local runtime support, root markers, hook configuration, the directive fallback, and updater capability. It reports hook trust and actual agent compliance as unknown unless the host exposes authoritative evidence.
+The report checks the package, runtime, hooks, fallback directive, and updater support. It cannot prove that a host trusted a hook or that an agent followed the routing policy unless the host provides that evidence.
 
-## Measure routing value
+## Limits
 
-Maintainers can compare direct and Council-assisted runs with the local paired benchmark harness. It records complete pairs only, including elapsed time, retries, quality results, observed usage, and missing metrics. The harness does not call models, upload telemetry, or turn its synthetic fixtures into performance claims.
+- The local engine does not call model providers. The main chat uses the native Codex or Claude Code tools.
+- Agent Council checks model identity reported by the host or provider. It cannot independently prove which infrastructure ran the model.
+- It does not guarantee that every model in the registry is available on your account.
+- It does not run live model benchmarks or promise a specific saving.
+- Compound Engineering is optional. Agent Council works without it.
+
+## Safety boundary
+
+Case records require `--project-root` and `--case-root` to point to a directory you control. The engine keeps its files inside that boundary and refuses a different root or a symlinked path.
+
+This protects against accidental writes by the current user. It is not a sandbox against a malicious process running as the same user.
+
+The engine rejects common secret-shaped values before writing a record. This is a pattern check, not a guarantee. Do not put secrets in command arguments or evidence fields.
+
+## For maintainers
+
+Compare direct and Council-assisted runs with the local paired benchmark:
 
 ```sh
 python3 plugins/agent-council/scripts/Invoke-AgentCouncilBenchmark.py --help
 python3 plugins/agent-council/scripts/Test-AgentCouncilBenchmark.py
 ```
 
-## What it does not do
+The benchmark records complete pairs, including elapsed time, retries, quality results, observed usage, and missing metrics. It does not call models or upload data.
 
-- The local engine does not call model providers. The main chat delegates through the native Codex or Claude Code tools.
-- Packaged hooks require a trusted local execution environment. Cloud and web sessions rely on the `AGENTS.md` directive and remain best-effort.
-- It does not guarantee that a provider actually ran the model it claims. It verifies identity based on observed tool results, not provider assertions.
-- It does not dynamically benchmark models or guarantee every model in the registry is available on your account.
-- Compound Engineering is optional. The plugin works without it.
-
-## Safety boundary
-
-Case records require `--project-root` and `--case-root` to point to a directory you control. The engine resolves all paths inside that boundary and refuses mutations through a different root or a symlinked path.
-
-This protects against accidental writes by the current user. It is not a sandbox against a malicious process running as the same user.
-
-The engine rejects common secret-shaped values before writing a record. That is pattern-matching, not a guarantee. Do not pass secrets as command-line arguments or in evidence fields.
-
-## Development
-
-Run the plugin check and contract groups from the plugin directory:
+Run the plugin checks from the plugin directory:
 
 ```sh
 cd plugins/agent-council
 python3 scripts/Test-AgentCouncilPlugin.py
 python3 scripts/Test-AgentCouncilUpdates.py
 python3 scripts/Test-AgentCouncilActivation.py
+python3 scripts/Test-ClaudeQualificationHarness.py
 python3 scripts/Test-RoutingPolicyPacketD.py
 python3 scripts/Test-AgentCouncilBenchmark.py
 for group in schema lifecycle stages routes provider authoring security dispatch-contracts; do
