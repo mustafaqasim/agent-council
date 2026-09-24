@@ -1,7 +1,7 @@
 {
   "schema_version": "agent-council.model-registry/v2",
   "registry_version": "v2",
-  "registry_sha256": "b399d2afc52030657079ea9171fa7ac4018a423db6feff9664ea46d71c549e29",
+  "registry_sha256": "fda95b9d5b9c7ff9b329d60e2457d110013a0a5267339b26db0c9c282ff374b9",
   "reasoning": {"default_effort": "high"},
   "provider_states": {
     "codex": {"council_status": "qualified"},
@@ -13,8 +13,8 @@
     {"binding_id": "codex-v2-technical", "provider": "codex", "model_id": "gpt-5.6-terra", "tier": "technical_tactical_intelligence", "status": "qualified", "binding_sha256": "4d48e84d5d953a50b700ec6e2d0d2c25f2f809773c38316084b313c75cdf8d12"},
     {"binding_id": "codex-v2-worker", "provider": "codex", "model_id": "gpt-5.6-luna", "tier": "worker_intelligence", "status": "qualified", "binding_sha256": "d314740cea162c672f3fdaf9249c11a4a2a14c474033735ea7e5bb7a7355f5da"},
     {"binding_id": "claude-code-v2-ultimate", "provider": "claude_code", "model_id": "claude-fable-5-1", "tier": "ultimate_intelligence", "status": "qualified", "binding_sha256": "609cd6cc193d4876b4dc6007a115ab16889a5e040a53ffe542f870bca58e776b"},
-    {"binding_id": "claude-code-v2-operational", "provider": "claude_code", "model_id": "claude-opus-5", "tier": "operational_intelligence", "status": "qualified", "binding_sha256": "d4767e74ff70bfe1f2ea22e5e98d1b0ac5e094142d9088a57d880f32cb908343"},
-    {"binding_id": "claude-code-v2-operational-opus-5-5", "provider": "claude_code", "model_id": "claude-opus-5-5", "tier": "operational_intelligence", "status": "candidate", "binding_sha256": "c8af0000a7f97fc9ba8af02772cbd7cebef5ad561cf7c30dc085eb6033c608a5"},
+    {"binding_id": "claude-code-v2-operational", "provider": "claude_code", "model_id": "claude-opus-5", "tier": "operational_intelligence", "status": "revoked", "binding_sha256": "b953ea2f3f5f9aad035a0bf3738a571ef8c7a1649fd3de4ede4911ce5a486093"},
+    {"binding_id": "claude-code-v2-operational-opus-5-5", "provider": "claude_code", "model_id": "claude-opus-5-5", "tier": "operational_intelligence", "status": "qualified", "binding_sha256": "9f13971fdef8100b82b487af27efd09332a25f7ba1e2d8601f701e2c781a3bcc"},
     {"binding_id": "claude-code-v2-technical", "provider": "claude_code", "model_id": "claude-sonnet-5", "tier": "technical_tactical_intelligence", "status": "qualified", "binding_sha256": "b6ddbded64c7b1cb62fc0243b1b0549dc212ccc98f83f72ce1d7e9eaa002e232"},
     {"binding_id": "claude-code-v2-worker", "provider": "claude_code", "model_id": "claude-haiku-4-5-20251001", "tier": "worker_intelligence", "status": "qualified", "binding_sha256": "e952eaf69c79f4ec5b9c82c0eb1aee91a06ec638252b01bf2ef39554851c31c4"}
   ]

@@ -1,5 +1,13 @@
 # Migration
 
+## Version 0.8.2
+
+Version 0.8.2 promotes Claude Opus 5.5 to the Claude Code operational tier after two clean, blind native qualification runs passed GFT01 through GFT12 on identical candidate bytes. Claude Opus 5 is revoked as the superseded operational binding.
+
+Claude Code Agent aliases are no longer treated as proof of a versioned model ID. Ordinary delegation must observe the exact provider model identity. Native qualification uses fresh interactive sessions with an exact full model ID, safe mode, restricted workspace access, distinct session IDs, and no answer key in the evaluator workspace.
+
+Existing governed cases retain their pinned registry. Open a new cycle before using the new binding.
+
 ## Version 0.8.1
 
 Version 0.8.1 corrects the premature v0.7.1 substitution of Opus 5.5 for the qualified Claude Code operational binding. `claude-opus-5` remains the qualified operational route. Opus 5.5 (`claude-opus-5-5`) is catalogued separately as a candidate and cannot satisfy a qualified dispatch gate until two fresh native qualification runs record the observed Claude Code identity on identical candidate bytes.

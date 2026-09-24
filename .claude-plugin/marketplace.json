@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Stop manually switching AI models. Agent Council sends each task to the right model tier and adds independent review when the work is risky.",
-    "version": "0.8.1"
+    "version": "0.8.2"
   },
   "plugins": [
     {
       "name": "agent-council",
       "description": "Stop manually switching AI models. Agent Council sends each task to the right model tier and adds independent review when the work is risky.",
-      "version": "0.8.1",
+      "version": "0.8.2",
       "author": {
         "name": "Mustafa Qasim"
       },
