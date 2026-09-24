@@ -1,20 +1,20 @@
 {
   "name": "agent-council",
-  "version": "0.8.0",
-  "description": "Route substantive work to cost-effective model tiers and add evidence gates when risk warrants them.",
+  "version": "0.8.1",
+  "description": "Stop manually switching AI models. Send each task to the right model tier and add independent review when the work is risky.",
   "author": {
     "name": "Mustafa Qasim"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Agent Council",
-    "shortDescription": "Route substantive work to the right model tier.",
-    "longDescription": "Agent Council routes bounded engineering, research, strategy, business, and document work to a cost-effective model tier. It keeps routine routing lightweight and opens a governed Council case only when qualifying risk requires independent review, evidence collection, and fail-closed completion gates.",
+    "shortDescription": "Match each task to the right AI model.",
+    "longDescription": "Stop using an expensive model for every easy step, or burning time on a cheaper model that cannot finish a hard one. Agent Council lets your Codex or Claude Code chat send each subtask to the model tier that fits it. Straightforward work stays lightweight. Difficult or risky work can escalate to stronger models, independent review, and evidence checks. It works on its own and does not require another plugin.",
     "developerName": "Mustafa Qasim",
     "category": "Productivity",
     "capabilities": [],
     "defaultPrompt": [
-      "Use Agent Council to route this work cost-effectively and apply governance only when risk warrants it."
+      "Use Agent Council to choose the right model tier for each part of this task, escalating only when complexity or risk warrants it."
     ]
   }
 }

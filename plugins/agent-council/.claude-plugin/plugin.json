@@ -1,7 +1,7 @@
 {
   "name": "agent-council",
-  "version": "0.8.0",
-  "description": "Route substantive work to cost-effective model tiers and add evidence gates when risk warrants them.",
+  "version": "0.8.1",
+  "description": "Stop manually switching AI models. Send each task to the right model tier and add independent review when the work is risky.",
   "author": {
     "name": "Mustafa Qasim"
   }

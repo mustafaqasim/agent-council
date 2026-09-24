@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,11 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def canonical_sha256(value: object) -> str:
+    serialized = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
+
+
 def main() -> int:
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     claude_manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
@@ -28,6 +34,9 @@ def main() -> int:
     source_checkout = (repository_root / "plugins" / "agent-council").resolve() == ROOT
     skill = (ROOT / "skills" / "agent-council" / "SKILL.md").read_text(encoding="utf-8")
     adapters = (ROOT / "skills" / "agent-council" / "references" / "model-adapters.yaml").read_text(encoding="utf-8")
+    registry = json.loads((ROOT / "standards" / "agent-model-registry.v2.yaml").read_text(encoding="utf-8"))
+    initial_claude_designation = json.loads((ROOT / "standards" / "model-qualifications" / "initial-claude-code-designation.v2.yaml").read_text(encoding="utf-8"))
+    opus_55_correction = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-catalog-correction.v1.yaml").read_text(encoding="utf-8"))
     integration = (ROOT / "skills" / "agent-council" / "references" / "compound-engineering.yaml").read_text(encoding="utf-8")
     forward_tests = (ROOT / "skills" / "agent-council" / "references" / "forward-tests.yaml").read_text(encoding="utf-8")
     openai_agent = (ROOT / "skills" / "agent-council" / "agents" / "openai.yaml").read_text(encoding="utf-8")
@@ -46,7 +55,7 @@ def main() -> int:
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
-    require(manifest["version"] == claude_manifest["version"] == "0.8.0", "plugin manifest versions are not aligned")
+    require(manifest["version"] == claude_manifest["version"] == "0.8.1", "plugin manifest versions are not aligned")
     if source_checkout:
         marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")
@@ -68,11 +77,11 @@ def main() -> int:
     require("Native standalone workflow is primary" in skill, "native standalone path is not primary")
     require("optional interoperability path" in skill, "Compound Engineering optionality is unclear")
     require("formatting-only changes" in skill and "deterministic checks using already-qualified components" in skill, "explicit negative activation cases are missing")
-    selection_text = "Route substantive work to cost-effective model tiers and add evidence gates when risk warrants them."
-    selection_prompt = "Use $agent-council to route this work cost-effectively and apply governance only when risk warrants it."
+    selection_text = "Stop manually switching AI models. Send each task to the right model tier and add independent review when the work is risky."
+    selection_prompt = "Use $agent-council to choose the right model tier for each part of this task, escalating only when complexity or risk warrants it."
     require(manifest["description"] == selection_text and claude_manifest["description"] == selection_text, "plugin manifest selection metadata is not aligned")
     require(openai_agent == claude_agent, "Codex and Claude agent metadata is not aligned")
-    require('short_description: "Route substantive work to the right model tier"' in openai_agent, "agent selection metadata is not concise")
+    require('short_description: "Match each task to the right AI model"' in openai_agent, "agent selection metadata is not concise")
     require(f'default_prompt: "{selection_prompt}"' in openai_agent, "agent applicability prompt is incomplete")
     require(25 <= len(manifest["interface"]["shortDescription"].rstrip(".")) <= 64, "Codex short description must be 25 to 64 characters")
     require(manifest["interface"]["defaultPrompt"] == [selection_prompt.replace("$agent-council", "Agent Council")], "plugin applicability prompt is incomplete")
@@ -99,6 +108,17 @@ def main() -> int:
         require("Automatic installation is unavailable." in security, "security policy does not state the automatic-installation boundary")
         require(marketplace["plugins"][0]["source"] == "./plugins/agent-council", "marketplace source must resolve the packaged plugin directory")
     require(all(item in adapters for item in ("ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence")), "cost classes are incomplete")
+    require(registry["registry_sha256"] == canonical_sha256({key: value for key, value in registry.items() if key != "registry_sha256"}), "registry hash is invalid")
+    require(all(binding["binding_sha256"] == canonical_sha256({key: value for key, value in binding.items() if key != "binding_sha256"}) for binding in registry["bindings"]), "binding hash is invalid")
+    qualified_claude_operational = [binding for binding in registry["bindings"] if binding["provider"] == "claude_code" and binding["tier"] == "operational_intelligence" and binding["status"] == "qualified"]
+    require(len(qualified_claude_operational) == 1 and qualified_claude_operational[0]["binding_id"] == "claude-code-v2-operational" and qualified_claude_operational[0]["model_id"] == "claude-opus-5", "Claude Code operational route must remain qualified for Opus 5 only")
+    opus_55_candidates = [binding for binding in registry["bindings"] if binding["binding_id"] == "claude-code-v2-operational-opus-5-5"]
+    require(len(opus_55_candidates) == 1 and opus_55_candidates[0]["model_id"] == "claude-opus-5-5" and opus_55_candidates[0]["tier"] == "operational_intelligence" and opus_55_candidates[0]["status"] == "candidate", "Opus 5.5 candidate binding is missing or invalid")
+    initial_operational = [designation for designation in initial_claude_designation["designations"] if designation["binding_id"] == "claude-code-v2-operational"]
+    require(initial_claude_designation["recorded_at"] == "2026-09-21T00:00:00Z" and len(initial_operational) == 1 and initial_operational[0]["model_id"] == "claude-opus-5", "initial Claude designation must not be backdated to Opus 5.5")
+    require(opus_55_correction["recorded_at"] == "2026-09-24T03:42:36Z" and opus_55_correction["subject"]["status"] == "candidate" and opus_55_correction["evidence"]["official_release_url"] == "https://platform.claude.com/docs/en/models/opus-5-5/overview", "Opus 5.5 correction record is incomplete")
+    require("Two fresh native qualification runs on identical candidate bytes." in opus_55_correction["promotion_requirements"] and "Each run records the observed Claude Code model identity as claude-opus-5-5." in opus_55_correction["promotion_requirements"], "Opus 5.5 promotion requirements are incomplete")
+    require('operational_intelligence: "claude-code-v2-operational -> claude-opus-5"' in adapters and "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5, intended successor awaiting qualification" in adapters, "Claude adapter route or candidate notice is invalid")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
     require("mode:return-to-caller" in integration, "CE return-to-caller boundary is missing")
     require("Native standalone workflow is primary" in integration, "CE integration lacks a native standalone path")
@@ -129,6 +149,14 @@ def main() -> int:
         plan = json.loads(planned.stdout)
         require(plan["user_notice"]["message"].startswith("Council: gpt-6-astra/high (premium) assigned routing task because "), "dispatch plan did not emit the bound visible notice")
         require(plan["work_method"] == "native" and plan["orchestrator_owner"] == "council" and plan["council_reentry"] == "denied" and plan["execution_mode"] == "native", "native method contract is invalid")
+        claude_capability = subprocess.run([sys.executable, str(runtime), "capability-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--model-id", "claude-opus-5", "--efforts-json", '["high"]', "--context-id", "context-plugin-claude-operational"], text=True, capture_output=True, check=False)
+        require(claude_capability.returncode == 0, "Claude Code Opus 5 capability capture failed")
+        claude_planned = subprocess.run([sys.executable, str(runtime), "dispatch-plan", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--role", "operational_intelligence", "--context-id", "context-plugin-claude-operational", "--decision-kind", "review"], text=True, capture_output=True, check=False)
+        require(claude_planned.returncode == 0, "Claude Code operational dispatch plan failed")
+        claude_plan = json.loads(claude_planned.stdout)
+        require(claude_plan["binding_id"] == "claude-code-v2-operational" and claude_plan["model_id"] == "claude-opus-5", "runtime selected the Opus 5.5 candidate for a qualified operational dispatch")
+        candidate_capture = subprocess.run([sys.executable, str(runtime), "dispatch-capture", "--case-root", str(case_root), "--project-root", str(project_root), "--provider", "claude_code", "--plan-nonce", claude_plan["plan_nonce"], "--task-id", "task-plugin-claude-operational", "--model-id", "claude-opus-5-5", "--effort", "high", "--context-id", "context-plugin-claude-operational", "--output-ref", "output-plugin-claude-operational", "--decision-kind", "review"], text=True, capture_output=True, check=False)
+        require(candidate_capture.returncode != 0 and "PROVIDER_RECEIPT_MISMATCH" in candidate_capture.stdout, "Opus 5.5 candidate bypassed the qualified dispatch gate")
     print(json.dumps({"result": "passed", "assertions": ASSERTION_COUNT, "source_checkout": source_checkout}, sort_keys=True))
     return 0
 

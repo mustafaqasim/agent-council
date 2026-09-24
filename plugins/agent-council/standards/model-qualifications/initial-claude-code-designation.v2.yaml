@@ -8,7 +8,7 @@
   "adapter": {"adapter_id": "claude-code-native-agent", "adapter_version": "v2", "adapter_ref": "skills/agent-council/references/model-adapters.yaml#claude_code"},
   "designations": [
     {"binding_id": "claude-code-v2-ultimate",    "tier": "ultimate_intelligence",           "model_id": "claude-fable-5-1",         "default_effort": "high"},
-    {"binding_id": "claude-code-v2-operational", "tier": "operational_intelligence",         "model_id": "claude-opus-5-5",          "default_effort": "high"},
+    {"binding_id": "claude-code-v2-operational", "tier": "operational_intelligence",         "model_id": "claude-opus-5",            "default_effort": "high"},
     {"binding_id": "claude-code-v2-technical",   "tier": "technical_tactical_intelligence",  "model_id": "claude-sonnet-5",          "default_effort": "high"},
     {"binding_id": "claude-code-v2-worker",      "tier": "worker_intelligence",              "model_id": "claude-haiku-4-5-20251001","default_effort": "high"}
   ],

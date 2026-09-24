@@ -1,6 +1,6 @@
 interface:
   display_name: "Agent Council"
-  short_description: "Route substantive work to the right model tier"
-  default_prompt: "Use $agent-council to route this work cost-effectively and apply governance only when risk warrants it."
+  short_description: "Match each task to the right AI model"
+  default_prompt: "Use $agent-council to choose the right model tier for each part of this task, escalating only when complexity or risk warrants it."
 policy:
   allow_implicit_invocation: true
