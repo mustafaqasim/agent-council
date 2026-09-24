@@ -1,5 +1,19 @@
 # Migration
 
+## Version 0.8.0
+
+Version 0.8.0 makes interrupted Council case writes recoverable, fixes plugin-root portability, adds a read-only activation diagnostic, clarifies risk-first routing, and adds a local paired benchmark harness.
+
+Automatic installation has been removed. Daily checks remain notification-only. `agent-council update now` performs a fresh check and returns the two host-managed commands that refresh the marketplace and install the current plugin release. Existing `auto_update: true` preferences no longer authorize installation. Use `agent-council update-check off` to stop automatic network checks, `agent-council update status` to inspect local state, and `agent-council update cleanup` to remove updater-owned settings and check state. Cleanup preserves plugin files and Council cases.
+
+Cases without a pending transaction journal remain readable. A v0.8.0 runtime recovers its own valid pending transaction before a mutation or through `recover-case`. It refuses malformed, conflicting, or path-escaping journals without rewriting evidence. Do not use an older runtime against a case that contains a v0.8.0 pending transaction. Older interrupted cases with unexplained orphan evidence require diagnosis; the runtime does not guess their intended state.
+
+Routing remains risk-first. A small, known-cause automation repair remains R1 when the `bounded_automation_repair` activation class applies. Ordinary local repairs with no qualifying activation class may still run directly or through lightweight routing.
+
+## Version 0.7.1
+
+The Claude Code operational tier now binds to Opus 5.5 (`claude-opus-5-5`) instead of Opus 5. Registry and binding hashes are recomputed. Governed cases opened on an earlier version keep their pinned registry. No other routing change.
+
 ## Version 0.7.0
 
 Version 0.7.0 adds a bounded daily update check for trusted local Codex installations. Notification is the default. Automatic installation remains off until the user sends the exact `agent-council auto-update on` instruction and the preference is stored in the plugin data directory.

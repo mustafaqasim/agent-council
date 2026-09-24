@@ -1,0 +1,34 @@
+schema_version: "agent-council.benchmark-specification/v1"
+purpose: "Local deterministic paired comparison reporting. It is not a model runner, telemetry system, qualification gate, or performance claim."
+runner: "scripts/Invoke-AgentCouncilBenchmark.py"
+input:
+  schema_version: "agent-council.benchmark-runs/v1"
+  format: "strict JSON object with a runs list"
+  bounds:
+    max_bytes: 1000000
+    max_runs: 1000
+    max_nesting: 32
+  duplicate_keys: "rejected"
+  required_per_run: ["pair_id", "fixture_id", "scope_id", "rubric_id", "condition", "order"]
+  condition_values: ["direct", "council"]
+  order_values: ["direct_first", "council_first"]
+  optional_observation_fields:
+    observed: ["model", "effort"]
+    usage:
+      actors: ["orchestrator", "worker"]
+      fields: ["input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens"]
+    run_metrics: ["elapsed_ms", "retries"]
+    verdict: ["correctness", "quality"]
+    audit_context: ["interventions", "provenance"]
+unknown_policy: "Omitted or null optional values are reported as unknown. Unknown values never produce inferred or zero-filled deltas."
+comparison:
+  complete_pair: "Exactly one direct and one council run sharing pair_id, fixture_id, scope_id, rubric_id, and order."
+  delta: "council minus direct, emitted only when both values are known."
+  exclusions: "Unpaired, duplicate-condition, identifier-mismatched, and order-mismatched records are listed without deltas."
+  order_reporting: "Counts direct_first and council_first complete pairs and flags whether they are balanced within one pair."
+report:
+  includes: ["complete comparable pair deltas", "excluded or incomplete pairs", "complete-pair correctness and quality failures", "observed model and effort", "interventions", "provenance", "unknown metrics"]
+  excludes: ["aggregate performance verdicts", "automatic qualification", "network activity", "uploads", "telemetry", "model dispatch"]
+fixtures:
+  path: "benchmark-fixtures.json"
+  status: "Synthetic arithmetic-only examples. They are never evidence of model performance."

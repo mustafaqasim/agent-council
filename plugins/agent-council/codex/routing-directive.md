@@ -32,7 +32,8 @@ directive and performs the bounded daily update check. `UserPromptSubmit`
 reinforces routing and handles the exact update preference commands documented
 in the README.
 
-The update installer is Codex-only. It requires explicit one-time instruction
-or a successfully stored `auto-update on` preference, updates only the fixed
-`agent-council@agent-council` selector, and takes effect in a new task. Hook
-failures never block routing.
+The updater is notification-only. `agent-council update now` performs a fresh
+check and returns the fixed two-step host-managed Codex update when available.
+Hooks never install the plugin, and legacy auto-update preferences are ignored.
+Use `agent-council update-check off` to disable automatic marketplace checks.
+Hook failures never block routing.

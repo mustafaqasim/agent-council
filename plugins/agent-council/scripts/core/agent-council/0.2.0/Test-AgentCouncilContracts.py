@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -590,6 +591,22 @@ def cli_detail(*args: str) -> tuple[int, dict[str, Any], str]:
 def cli(*args: str) -> tuple[int, dict[str, Any]]:
     code, response, _ = cli_detail(*args)
     return code, response
+
+
+def cli_fault(boundary: str, *args: str) -> tuple[int, dict[str, Any], str]:
+    """Run one public command with a deterministic post-durability fault."""
+    command = list(args)
+    if "--case-root" in command and "--project-root" not in command:
+        case_root = Path(command[command.index("--case-root") + 1])
+        command.extend(("--project-root", str(case_root.parent)))
+    environment = os.environ.copy()
+    environment["AGENT_COUNCIL_TEST_FAIL_AFTER_BOUNDARY"] = boundary
+    completed = subprocess.run([sys.executable, str(RUNTIME), *command], capture_output=True, text=True, check=False, env=environment)
+    try:
+        response = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        response = {"result": "invalid", "stdout": completed.stdout, "stderr": completed.stderr}
+    return completed.returncode, response, completed.stderr
 
 
 def event_inventory(case_root: Path) -> dict[str, str]:
@@ -1205,6 +1222,95 @@ def test_public_evaluate_integer_digit_bound() -> list[tuple[str, bool, str]]:
     return rows
 
 
+def test_pending_case_transactions() -> list[tuple[str, bool, str]]:
+    """Exercise durable recovery solely through the public CLI contract."""
+    rows: list[tuple[str, bool, str]] = []
+
+    def faulted_case(root: Path, label: str, boundary: str) -> tuple[dict[str, Any], bytes]:
+        init_code, _ = cli("init-case", "--case-root", str(root), "--case-id", f"case-journal-{label}", "--route", "R2")
+        before = (root / "case.json").read_bytes() if init_code == 0 else b""
+        state = json.loads(before) if before else {}
+        failure_code, _, failure_stderr = cli_fault(boundary, "evidence-add", "--case-root", str(root), "--evidence-id", f"evidence-journal-{label}", "--evidence-kind", "behavioral_test", "--content-json", json.dumps(behavioral_evidence(state.get("engineering_candidate", {}), f"test-journal-{label}", state.get("cycle_id", ""))))
+        rows.append((f"pending-journal-{label}-fault-injected", init_code == 0 and failure_code != 0 and "Traceback" not in failure_stderr and (root / ".agent-council.pending.v1.json").is_file(), "a failure after the requested durable boundary leaves an exact pending write-ahead journal"))
+        return state, before
+
+    with tempfile.TemporaryDirectory(prefix="agent-council-v2-pending-") as temporary:
+        root = Path(temporary)
+        journal_root = root / "case-journal-boundary"
+        _, old_state = faulted_case(journal_root, "boundary", "journal")
+        journal = journal_root / ".agent-council.pending.v1.json"
+        wrong_boundary_before = filesystem_inventory(journal_root)
+        wrong_boundary_code, wrong_boundary, wrong_boundary_stderr = cli_detail("recover-case", "--case-root", str(journal_root), "--project-root", str(root.parent))
+        rows.append(("pending-journal-wrong-project-root-cannot-recover", wrong_boundary_code != 0 and structural_refusal(wrong_boundary, "PROJECT_ROOT_MISMATCH") and "Traceback" not in wrong_boundary_stderr and filesystem_inventory(journal_root) == wrong_boundary_before and (journal_root / "case.json").read_bytes() == old_state and journal.exists(), "a broader but unpinned project root cannot publish a pending state or remove its journal"))
+        lock = journal_root / ".agent-council.lock"
+        if lock.exists(): lock.unlink()
+        read_before = filesystem_inventory(journal_root)
+        evaluate_code, evaluate, evaluate_stderr = cli_detail("evaluate", str(journal_root / "case.json"))
+        rows.append(("pending-journal-evaluation-is-read-only-and-requires-recovery", evaluate_code != 0 and structural_refusal(evaluate, "RECOVERY_REQUIRED") and "Traceback" not in evaluate_stderr and filesystem_inventory(journal_root) == read_before and not lock.exists(), "read-only evaluation reports pending recovery without taking the lock or repairing bytes"))
+        recovered_code, recovered = cli("recover-case", "--case-root", str(journal_root))
+        recovered_state = json.loads((journal_root / "case.json").read_text(encoding="utf-8"))
+        rows.append(("pending-journal-recover-after-journal-boundary", recovered_code == 0 and recovered.get("code") == "CASE_RECOVERED" and not journal.exists() and (journal_root / "case.json").read_bytes() != old_state and any(item.get("record_type") == "evidence" for item in recovered_state.get("events", [])), "recovery publishes the complete immutable transaction and replaces state last"))
+
+        target_root = root / "case-journal-target"
+        _, target_old = faulted_case(target_root, "target", "target-1")
+        target_journal = json.loads((target_root / ".agent-council.pending.v1.json").read_text(encoding="utf-8"))
+        target = target_journal["targets"][0]
+        target_path = target_root / target["path"]
+        target_before = target_path.read_bytes() if target_path.is_file() else b""
+        target_recover_code, target_recover = cli("recover-case", "--case-root", str(target_root))
+        target_expected_state = base64.b64decode(target_journal["state"]["bytes_b64"])
+        rows.append(("pending-journal-exact-immutable-replay", target_recover_code == 0 and target_recover.get("code") == "CASE_RECOVERED" and target_before == target_path.read_bytes() and (target_root / "case.json").read_bytes() == target_expected_state and (target_root / "case.json").read_bytes() != target_old, "recovery accepts an already-published immutable target only when its exact bytes match"))
+
+        committed_root = root / "case-journal-committed"
+        _, _ = faulted_case(committed_root, "committed", "case")
+        committed_journal = committed_root / ".agent-council.pending.v1.json"
+        committed_state = (committed_root / "case.json").read_bytes()
+        committed_code, committed = cli("recover-case", "--case-root", str(committed_root))
+        rows.append(("pending-journal-committed-not-cleaned-recovery", committed_code == 0 and committed.get("code") == "CASE_RECOVERED" and not committed_journal.exists() and (committed_root / "case.json").read_bytes() == committed_state, "a committed but uncleaned journal is cleaned without changing exact state bytes"))
+
+        conflict_root = root / "case-journal-conflict"
+        _, conflict_old = faulted_case(conflict_root, "conflict", "journal")
+        conflict = json.loads((conflict_root / ".agent-council.pending.v1.json").read_text(encoding="utf-8"))
+        conflicting_target = conflict_root / conflict["targets"][0]["path"]
+        conflicting_target.parent.mkdir(parents=True, exist_ok=True)
+        conflicting_target.write_bytes(b"conflicting bytes\n")
+        conflict_code, conflict_result, conflict_stderr = cli_detail("recover-case", "--case-root", str(conflict_root))
+        rows.append(("pending-journal-conflicting-target-fails-closed", conflict_code != 0 and structural_refusal(conflict_result, "PENDING_TRANSACTION_CONFLICT") and "Traceback" not in conflict_stderr and (conflict_root / "case.json").read_bytes() == conflict_old and (conflict_root / ".agent-council.pending.v1.json").exists(), "conflicting immutable bytes leave both state and recovery evidence untouched"))
+
+        malformed_root = root / "case-journal-malformed"
+        malformed_init, _ = cli("init-case", "--case-root", str(malformed_root), "--case-id", "case-journal-malformed", "--route", "R2")
+        malformed_old = (malformed_root / "case.json").read_bytes() if malformed_init == 0 else b""
+        (malformed_root / ".agent-council.pending.v1.json").write_text("not-json\n", encoding="utf-8")
+        malformed_code, malformed, malformed_stderr = cli_detail("recover-case", "--case-root", str(malformed_root))
+        rows.append(("pending-journal-malformed-fails-closed", malformed_code != 0 and structural_refusal(malformed, "PENDING_TRANSACTION_INVALID") and "Traceback" not in malformed_stderr and (malformed_root / "case.json").read_bytes() == malformed_old, "malformed pending journals are never interpreted or discarded"))
+
+        symlink_root = root / "case-journal-symlink"
+        _, symlink_old = faulted_case(symlink_root, "symlink", "journal")
+        symlink_plan = json.loads((symlink_root / ".agent-council.pending.v1.json").read_text(encoding="utf-8"))
+        outside = root / "outside-journal-target"; outside.mkdir()
+        symlink_target = symlink_root / symlink_plan["targets"][0]["path"]
+        symlink_target.parent.mkdir(parents=True, exist_ok=True)
+        symlink_target.symlink_to(outside / "escaped.json")
+        symlink_code, symlink_result, symlink_stderr = cli_detail("recover-case", "--case-root", str(symlink_root))
+        rows.append(("pending-journal-symlink-refused-before-repair", symlink_code != 0 and structural_refusal(symlink_result, "CASE_PATH_SYMLINK_REFUSED") and "Traceback" not in symlink_stderr and (symlink_root / "case.json").read_bytes() == symlink_old and not any(outside.iterdir()), "a symlinked recovery target is refused before it can redirect a repair write"))
+
+        concurrent_root = root / "case-journal-concurrent"
+        _, _ = faulted_case(concurrent_root, "concurrent", "journal")
+        command = [sys.executable, str(RUNTIME), "recover-case", "--case-root", str(concurrent_root), "--project-root", str(concurrent_root.parent)]
+        processes = [subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(2)]
+        replies = []
+        for process in processes:
+            stdout, stderr = process.communicate(timeout=30)
+            try: response = json.loads(stdout)
+            except json.JSONDecodeError: response = {}
+            replies.append((process.returncode, response, stderr))
+        concurrent_state = json.loads((concurrent_root / "case.json").read_text(encoding="utf-8"))
+        recovered = [reply for reply in replies if reply[0] == 0 and reply[1].get("code") == "CASE_RECOVERED"]
+        idle = [reply for reply in replies if reply[0] == 0 and reply[1].get("code") == "NO_PENDING_TRANSACTION"]
+        rows.append(("pending-journal-concurrent-retry-idempotent", len(recovered) == len(idle) == 1 and not (concurrent_root / ".agent-council.pending.v1.json").exists() and len([item for item in concurrent_state.get("events", []) if item.get("record_type") == "evidence"]) == 1 and all("Traceback" not in reply[2] for reply in replies), "concurrent recoveries serialize to one exact publication and one harmless retry"))
+    return rows
+
+
 def test_authoring(group: str) -> list[tuple[str, bool, str]]:
     rows: list[tuple[str, bool, str]] = []
     with tempfile.TemporaryDirectory(prefix="agent-council-v2-authoring-") as temporary:
@@ -1319,7 +1425,7 @@ def test_authoring(group: str) -> list[tuple[str, bool, str]]:
         code, interrupted = cli("interrupt", "--case-root", str(case_root), "--processes-json", '[{"identity":"local-process","status":"reconciled"}]')
         code2, resumed = cli("resume", "--case-root", str(case_root), "--interruption-id", interrupted.get("interruption_id", "missing"))
         rows.append(("cross-cycle-exact-resumption", code == code2 == 0 and resumed.get("code") == "INTERRUPTION_RESUMED", "reconciled interruption resumes exactly in a new cycle"))
-    return rows + test_stale_dispatch_plans() + test_public_cli_boundaries() + test_public_cli_multi_cycle_transitions() + test_public_cli_evidence_id_boundary() + test_public_evaluate_read_only() + test_public_cycle_start_unchanged() + test_public_json_depth_guard() + test_public_complete_envelope_depth_guard() + test_public_init_candidate_complete_envelope_depth() + test_public_evaluate_integer_digit_bound()
+    return rows + test_pending_case_transactions() + test_stale_dispatch_plans() + test_public_cli_boundaries() + test_public_cli_multi_cycle_transitions() + test_public_cli_evidence_id_boundary() + test_public_evaluate_read_only() + test_public_cycle_start_unchanged() + test_public_json_depth_guard() + test_public_complete_envelope_depth_guard() + test_public_init_candidate_complete_envelope_depth() + test_public_evaluate_integer_digit_bound()
 
 
 def test_dispatch_contracts() -> list[tuple[str, bool, str]]:

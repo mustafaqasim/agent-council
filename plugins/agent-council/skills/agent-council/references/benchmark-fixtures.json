@@ -1,0 +1,87 @@
+{
+  "schema_version": "agent-council.benchmark-runs/v1",
+  "fixture_notice": "Synthetic arithmetic-only fixture. Values prove reporting calculations and are never performance claims.",
+  "runs": [
+    {
+      "record_id": "synthetic-a-direct",
+      "pair_id": "synthetic-a",
+      "fixture_id": "synthetic-fixture-1",
+      "scope_id": "bounded-scope",
+      "rubric_id": "synthetic-rubric",
+      "condition": "direct",
+      "order": "direct_first",
+      "observed": {"model": "synthetic-direct", "effort": "synthetic"},
+      "usage": {
+        "orchestrator": {"input_tokens": 100, "output_tokens": 50, "cached_input_tokens": 0, "reasoning_tokens": 0},
+        "worker": {"input_tokens": 0, "output_tokens": 0, "cached_input_tokens": 0, "reasoning_tokens": 0}
+      },
+      "elapsed_ms": 1200,
+      "retries": 1,
+      "verdict": {"correctness": "pass", "quality": "pass"},
+      "interventions": [],
+      "provenance": {"source": "synthetic-fixture"}
+    },
+    {
+      "record_id": "synthetic-a-council",
+      "pair_id": "synthetic-a",
+      "fixture_id": "synthetic-fixture-1",
+      "scope_id": "bounded-scope",
+      "rubric_id": "synthetic-rubric",
+      "condition": "council",
+      "order": "direct_first",
+      "observed": {"model": "synthetic-council", "effort": "synthetic"},
+      "usage": {
+        "orchestrator": {"input_tokens": 200, "output_tokens": 100, "cached_input_tokens": 0, "reasoning_tokens": 0},
+        "worker": {"input_tokens": 300, "output_tokens": 200, "cached_input_tokens": 0, "reasoning_tokens": 0}
+      },
+      "elapsed_ms": 900,
+      "retries": 0,
+      "verdict": {"correctness": "pass", "quality": "pass"},
+      "interventions": ["synthetic-review"],
+      "provenance": {"source": "synthetic-fixture"}
+    },
+    {
+      "record_id": "synthetic-b-direct",
+      "pair_id": "synthetic-b",
+      "fixture_id": "synthetic-fixture-2",
+      "scope_id": "bounded-scope",
+      "rubric_id": "synthetic-rubric",
+      "condition": "direct",
+      "order": "council_first",
+      "observed": {"model": "synthetic-direct", "effort": "synthetic"},
+      "elapsed_ms": 400,
+      "retries": 0,
+      "verdict": {"correctness": "pass", "quality": "fail"},
+      "interventions": [],
+      "provenance": {"source": "synthetic-fixture"}
+    },
+    {
+      "record_id": "synthetic-b-council",
+      "pair_id": "synthetic-b",
+      "fixture_id": "synthetic-fixture-2",
+      "scope_id": "bounded-scope",
+      "rubric_id": "synthetic-rubric",
+      "condition": "council",
+      "order": "council_first",
+      "observed": {"model": "synthetic-council", "effort": "synthetic"},
+      "elapsed_ms": 600,
+      "retries": 1,
+      "verdict": {"correctness": "pass", "quality": "pass"},
+      "interventions": ["synthetic-review"],
+      "provenance": {"source": "synthetic-fixture"}
+    },
+    {
+      "record_id": "synthetic-incomplete-direct",
+      "pair_id": "synthetic-incomplete",
+      "fixture_id": "synthetic-fixture-3",
+      "scope_id": "bounded-scope",
+      "rubric_id": "synthetic-rubric",
+      "condition": "direct",
+      "order": "direct_first",
+      "observed": {"model": "synthetic-direct", "effort": "synthetic"},
+      "verdict": {"correctness": "unknown", "quality": "unknown"},
+      "interventions": [],
+      "provenance": {"source": "synthetic-fixture"}
+    }
+  ]
+}

@@ -29,12 +29,22 @@ common:
       - "Do not expose private reasoning or internal deliberation."
   lightweight_dispatch:
     - "Resolve the lowest qualified active binding that can complete the bounded task reliably."
+    - "Honor an explicit user model or effort preference when it is compatible with the selected qualified binding, route, and native tool support. A preference never lowers a qualification floor or grants unavailable authority."
     - "When the preferred binding is unavailable, use an active same-tier fallback first. Use the next higher qualified tier only when the expected benefit still exceeds its cost; otherwise report the limitation and continue by direct execution."
     - "Never substitute a lower tier that is unlikely to complete the task reliably."
     - "Show the user notice, then use the platform's native delegation tool with the explicit registry model ID and effort."
     - "Keep the returned task identity, model, context, disposition, and evidence visible in the active transcript."
     - "Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing."
+    - "End the active conversation with a compact receipt of actual observed model and effort, outcome, evidence, and limitations. State no delegation when none occurred. Do not persist a lightweight log or claim savings that were not observed."
     - "Escalate to governed-case dispatch before continuing if new evidence reveals a qualifying risk trigger."
+  routing_precedence:
+    - "Evaluate user scope, authority, and council_reentry before risk. council_reentry: denied returns evidence to the owning case and does not invoke nested Council routing."
+    - "Evaluate qualifying risk before economics. A risk trigger overrides task size and projected delegation benefit; choose the highest applicable R1, R2, or R3 route."
+    - "When no qualifying risk applies, choose direct execution or lightweight routing by observable net benefit after coordination cost."
+    - "Reassess only on material evidence changing scope, authority, cause, contract, safety, acceptance, qualification, or repeated-failure facts."
+  lightweight_effort_and_fanout:
+    - "Use minimal or low effort for mechanical, extraction, formatting, and deterministic bounded work; medium for bounded implementation, structured analysis, and drafting; high only for difficult bounded judgment."
+    - "Use the smallest useful independent fanout. Escalate one tier or effort step only when returned evidence shows insufficiency, material task expansion, or an in-scope qualifying risk trigger."
   governed_case_required_receipt:
     - "case_id, cycle_id, packet_id, policy_sha256, registry_version, registry_sha256, and prompt_sha256"
     - "binding_id, binding_sha256, requested_tier, effective_tier, model_id, reasoning, and adapter"
@@ -80,7 +90,7 @@ claude_code:
     - "The Agent tool model parameter constitutes explicit_tool_selection assurance when the provider accepts and reflects the specified model_id."
   tier_bindings:
     ultimate_intelligence: "claude-code-v2-ultimate -> claude-fable-5-1"
-    operational_intelligence: "claude-code-v2-operational -> claude-opus-5"
+    operational_intelligence: "claude-code-v2-operational -> claude-opus-5-5"
     technical_tactical_intelligence: "claude-code-v2-technical -> claude-sonnet-5"
     worker_intelligence: "claude-code-v2-worker -> claude-haiku-4-5-20251001"
   unavailable:

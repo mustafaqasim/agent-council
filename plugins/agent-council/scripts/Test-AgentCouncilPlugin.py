@@ -37,11 +37,16 @@ def main() -> int:
     routing_hook = (ROOT / "hooks" / "agent-council-routing.sh").read_text(encoding="utf-8")
     update_manager = ROOT / "scripts" / "Manage-AgentCouncilUpdates.py"
     update_tests = ROOT / "scripts" / "Test-AgentCouncilUpdates.py"
+    activation_diagnostic = ROOT / "scripts" / "Diagnose-AgentCouncil.py"
+    activation_tests = ROOT / "scripts" / "Test-AgentCouncilActivation.py"
+    routing_tests = ROOT / "scripts" / "Test-RoutingPolicyPacketD.py"
+    benchmark_runner = ROOT / "scripts" / "Invoke-AgentCouncilBenchmark.py"
+    benchmark_tests = ROOT / "scripts" / "Test-AgentCouncilBenchmark.py"
     runtime = ROOT / "scripts" / "core" / "agent-council" / "0.2.0" / "Invoke-AgentCouncil.py"
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
-    require(manifest["version"] == claude_manifest["version"] == "0.7.0", "plugin manifest versions are not aligned")
+    require(manifest["version"] == claude_manifest["version"] == "0.8.0", "plugin manifest versions are not aligned")
     if source_checkout:
         marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")
@@ -78,6 +83,9 @@ def main() -> int:
     require(any(update_command in command and "SessionStart" in command for command in session_commands), "daily update checker is missing from SessionStart")
     require(any(update_command in command and "UserPromptSubmit" in command for command in prompt_commands), "update preference handler is missing from UserPromptSubmit")
     require(update_manager.is_file() and update_tests.is_file(), "update manager or its behavioral test is missing")
+    require(activation_diagnostic.is_file() and activation_tests.is_file(), "activation diagnostic or its behavioral test is missing")
+    require(routing_tests.is_file(), "routing policy behavioral test is missing")
+    require(benchmark_runner.is_file() and benchmark_tests.is_file(), "paired benchmark harness or its behavioral test is missing")
     require("PLUGIN_ROOT" in " ".join(session_commands + prompt_commands), "Codex plugin root is not passed to the update manager")
     require(chr(0x2014) not in routing_hook, "routing hook contains a prohibited em dash")
     require("Before each lightweight or governed delegation" in skill, "visible dispatch notice is missing")
@@ -87,8 +95,8 @@ def main() -> int:
         require("codex plugin marketplace add mustafaqasim/agent-council --ref main" in readme, "public GitHub marketplace install command is missing")
         require("codex plugin add agent-council@agent-council" in readme, "public marketplace plugin selector is missing")
         require("Do not install the repository root as a personal plugin." in readme, "repo-root installation warning is missing")
-        require(all(command in readme for command in ("agent-council update now", "agent-council auto-update on", "agent-council auto-update off")), "documented update preference commands are incomplete")
-        require("Automatic updates are disabled by default." in security, "security policy does not state the auto-update default")
+        require(all(command in readme for command in ("agent-council update now", "agent-council update-check on", "agent-council update-check off", "agent-council update status", "agent-council update cleanup")), "documented update controls are incomplete")
+        require("Automatic installation is unavailable." in security, "security policy does not state the automatic-installation boundary")
         require(marketplace["plugins"][0]["source"] == "./plugins/agent-council", "marketplace source must resolve the packaged plugin directory")
     require(all(item in adapters for item in ("ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence")), "cost classes are incomplete")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
