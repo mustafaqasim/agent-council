@@ -1,0 +1,30 @@
+{
+  "schema_version": "agent-council.model-catalog-correction/v1",
+  "record_type": "model_catalog_correction",
+  "record_id": "claude-opus-5-5-catalog-correction-2026-09-24",
+  "recorded_at": "2026-09-24T03:42:36Z",
+  "provider": "claude_code",
+  "subject": {
+    "binding_id": "claude-code-v2-operational-opus-5-5",
+    "model_id": "claude-opus-5-5",
+    "tier": "operational_intelligence",
+    "status": "candidate"
+  },
+  "correction": {
+    "premature_substitution": "The active qualified claude-code-v2-operational binding was restored to claude-opus-5.",
+    "active_binding": "claude-code-v2-operational -> claude-opus-5",
+    "candidate_binding": "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5"
+  },
+  "evidence": {
+    "official_release_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+  },
+  "promotion_requirements": [
+    "Two fresh native qualification runs on identical candidate bytes.",
+    "Each run records the observed Claude Code model identity as claude-opus-5-5.",
+    "Promotion occurs only through a new qualification record and registry hash."
+  ],
+  "limitations": [
+    "Cataloguing a provider release is not a qualification receipt.",
+    "The candidate must not satisfy a qualified dispatch gate."
+  ]
+}

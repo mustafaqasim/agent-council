@@ -1,5 +1,11 @@
 # Migration
 
+## Version 0.8.1
+
+Version 0.8.1 corrects the premature v0.7.1 substitution of Opus 5.5 for the qualified Claude Code operational binding. `claude-opus-5` remains the qualified operational route. Opus 5.5 (`claude-opus-5-5`) is catalogued separately as a candidate and cannot satisfy a qualified dispatch gate until two fresh native qualification runs record the observed Claude Code identity on identical candidate bytes.
+
+The v0.7.1 entry remains historical. Governed cases retain their pinned registry state, including the registry that was active when each case opened.
+
 ## Version 0.8.0
 
 Version 0.8.0 makes interrupted Council case writes recoverable, fixes plugin-root portability, adds a read-only activation diagnostic, clarifies risk-first routing, and adds a local paired benchmark harness.

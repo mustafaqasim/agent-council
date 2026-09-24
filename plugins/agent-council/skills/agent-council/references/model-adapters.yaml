@@ -78,7 +78,7 @@ codex:
 
 claude_code:
   mechanism: "Use the Agent tool with an explicit model parameter to dispatch work to Claude Code subagents."
-  status: "Qualified with v2 registry bindings and designation receipt."
+  status: "Qualified only for active v2 bindings. Opus 5.5 is the intended operational successor candidate and awaits native qualification."
   assurance_level: "explicit_tool_selection"
   delegation_tool: "Agent tool (model parameter set to the registry model_id for the requested tier)"
   procedure:
@@ -90,9 +90,11 @@ claude_code:
     - "The Agent tool model parameter constitutes explicit_tool_selection assurance when the provider accepts and reflects the specified model_id."
   tier_bindings:
     ultimate_intelligence: "claude-code-v2-ultimate -> claude-fable-5-1"
-    operational_intelligence: "claude-code-v2-operational -> claude-opus-5-5"
+    operational_intelligence: "claude-code-v2-operational -> claude-opus-5"
     technical_tactical_intelligence: "claude-code-v2-technical -> claude-sonnet-5"
     worker_intelligence: "claude-code-v2-worker -> claude-haiku-4-5-20251001"
+  candidate_bindings:
+    operational_intelligence: "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5, intended successor awaiting qualification"
   unavailable:
     disposition: "Record required_tier_binding_unavailable and hold the dependent engineering gate."
     permitted_progress: ["Authorized read-only evidence gathering", "Packet preparation", "Ordinary excluded operations"]

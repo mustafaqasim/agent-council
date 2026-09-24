@@ -5,14 +5,14 @@
     "name": "Mustafa Qasim"
   },
   "metadata": {
-    "description": "Route substantive work to cost-effective model tiers and add governance when risk warrants it.",
-    "version": "0.8.0"
+    "description": "Stop manually switching AI models. Agent Council sends each task to the right model tier and adds independent review when the work is risky.",
+    "version": "0.8.1"
   },
   "plugins": [
     {
       "name": "agent-council",
-      "description": "Route substantive work to cost-effective model tiers and add governance when risk warrants it.",
-      "version": "0.8.0",
+      "description": "Stop manually switching AI models. Agent Council sends each task to the right model tier and adds independent review when the work is risky.",
+      "version": "0.8.1",
       "author": {
         "name": "Mustafa Qasim"
       },
