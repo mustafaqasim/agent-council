@@ -1,0 +1,7 @@
+results/
+local/
+*.jsonl
+*.json
+!domain-skill-coexistence/fixture-domain/.claude-plugin/plugin.json
+aggregate-result.json
+report.html

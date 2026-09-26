@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.1",
+  "name": "lightweight-positive",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "lightweight-positive",
+    "no-nested-council"
+  ],
+  "execution": {
+    "prompt": "Create an internal comparison of two onboarding approaches from these supplied research extracts. Independently assess both extracts, then synthesize a recommendation with the main tradeoff. Extract A: teams using mentor-led onboarding took 8 days to complete the checklist; 18 of 20 completed it; mentors spent 4 hours per new hire; participants valued tailored answers. Extract B: self-service onboarding took 5 days; 14 of 20 completed it; maintainers spent 1 hour per hire; participants reported unclear escalation paths. Evaluate completion, speed, staff effort, evidence limitations, and a practical combined approach. There are separable evidence checks and analysis tasks. Work only from these facts, without files, network, publication, installation, or deployment. Do the analysis now.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "observed-delegation",
+      "tool": "Agent",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "delegation-reentry-boundary",
+      "tool": "Agent",
+      "input_match": "council_reentry.{0,10}denied",
+      "min": 1
+    },
+    {
+      "type": "tool_order",
+      "name": "skill-before-delegation",
+      "before": {
+        "tool": "Skill",
+        "input_match": "agent-council"
+      },
+      "after": "Agent"
+    },
+    {
+      "type": "regex",
+      "name": "lightweight-route",
+      "target": "last_message",
+      "pattern": "lightweight routing|lightweight",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "evidence-used",
+      "target": "last_message",
+      "pattern": "18.{0,10}20|90%",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-governed-route",
+      "target": "last_message",
+      "pattern": "governed case R[123]",
+      "flags": "i",
+      "match": "not_contains"
+    }
+  ]
+}

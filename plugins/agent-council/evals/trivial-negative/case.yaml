@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.1",
+  "name": "trivial-negative",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "trivial-negative"
+  ],
+  "execution": {
+    "prompt": "What is 7 multiplied by 8? Answer directly and briefly.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "regex",
+      "name": "answer",
+      "target": "last_message",
+      "pattern": "\\b56\\b",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-council-invocation",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-delegation",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

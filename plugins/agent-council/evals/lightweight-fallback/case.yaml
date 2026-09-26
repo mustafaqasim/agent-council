@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.1",
+  "name": "lightweight-fallback",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "lightweight-fallback"
+  ],
+  "execution": {
+    "prompt": "Use Agent Council's routing policy to assess this hypothetical capability snapshot, without actual delegation. A lightweight extraction task prefers worker_intelligence. Its primary binding is unavailable; an active qualified same-tier fallback is available. A higher qualified tier is also available at greater cost. State which tier should be selected first and whether a governed case is needed. The snapshot is an exercise input, not evidence that a real provider supports those bindings.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "regex",
+      "name": "same-tier-fallback",
+      "target": "last_message",
+      "pattern": "same.tier.*fallback|fallback.*same.tier",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-governed",
+      "target": "last_message",
+      "pattern": "no.*governed|governed.*not|no.*case|case.*not",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-pretend-dispatch",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

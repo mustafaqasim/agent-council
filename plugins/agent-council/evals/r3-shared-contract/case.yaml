@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.1",
+  "name": "r3-shared-contract",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "R3"
+  ],
+  "execution": {
+    "prompt": "Implement a change to a shared API error schema consumed by a web client and two external SDKs. Replace string errors with structured error objects; all three consumers must migrate. Before any implementation, identify the governance route and mandatory review, integration, and fault evidence, then stop. Do not change files.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "regex",
+      "name": "r3-route",
+      "target": "last_message",
+      "pattern": "governed case R3|\\bR3\\b",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "integration-gate",
+      "target": "last_message",
+      "pattern": "integration",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "fault-gate",
+      "target": "last_message",
+      "pattern": "fault",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "ultimate-review",
+      "target": "last_message",
+      "pattern": "ultimate|architecture.*review",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.1",
+  "name": "escalate-new-contract-evidence",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "escalation-new-shared-contract"
+  ],
+  "execution": {
+    "prompt": "Use Agent Council to reassess the current task. It began as a known-cause ordinary local typo repair. New verified evidence shows the field being renamed is serialized into a shared schema read by three downstream consumers. Implementing the proposed repair changes that shared contract. State the new route and evidence gates, then stop before implementation.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "regex",
+      "name": "escalated-r3",
+      "target": "last_message",
+      "pattern": "\\bR3\\b",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "consumer-integration",
+      "target": "last_message",
+      "pattern": "integration|consumer",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "fault-evidence",
+      "target": "last_message",
+      "pattern": "fault",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}
