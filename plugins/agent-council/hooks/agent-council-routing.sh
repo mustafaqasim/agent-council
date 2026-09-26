@@ -20,4 +20,8 @@ import json, sys
 event, msg = sys.argv[1], sys.argv[2]
 print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": msg}}))
 PY
+# Trace failure must never hide or replace the activation output above.
+if [ "${AGENT_COUNCIL_TRACE:-}" = "1" ]; then
+  python3 -B "${BASH_SOURCE[0]%/*}/../scripts/AgentCouncilTrace.py" hook --event "$event" >/dev/null 2>&1 || true
+fi
 exit 0

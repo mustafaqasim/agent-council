@@ -105,6 +105,8 @@ def main() -> int:
         payload = json.loads(diagnosis.stdout)
         require(payload["guarantees"] == {"files_created": False, "install_commands_run": False, "locks_created": False, "network_used": False, "read_only": True}, "diagnostic mutation guarantees are incomplete")
         require(payload["trust"]["status"] == payload["actual_agent_compliance"]["status"] == "unknown", "diagnostic overstates trust or compliance")
+        require(payload["decision_trace"]["state"] == "disabled", "trace must be disabled without explicit opt-in")
+        require(payload["decision_trace"]["actual_agent_compliance"] == "unknown", "trace must not imply compliance")
         require(payload["root_and_host_markers"]["markers"]["PLUGIN_ROOT"]["matches_package_root"], "diagnostic did not observe PLUGIN_ROOT")
         require(payload["hook_configuration"]["root_fallback_configured"], "diagnostic did not observe root fallback")
         require(set(base.iterdir()) == before and not data_dir.exists(), "diagnostic created a file, directory, or lock")

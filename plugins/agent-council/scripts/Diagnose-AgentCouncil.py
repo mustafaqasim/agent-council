@@ -10,6 +10,9 @@ import shutil
 import sys
 from typing import Any
 
+sys.dont_write_bytecode = True
+from AgentCouncilTrace import inspect_trace
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUTING_EVENTS = ("SessionStart", "UserPromptSubmit")
@@ -136,6 +139,7 @@ def build_report(environ: dict[str, str]) -> dict[str, Any]:
         },
         "updater_capability": updater_observation(environ),
         "trust": {"status": "unknown", "reason": "No authoritative host trust attestation is available to this diagnostic."},
+        "decision_trace": inspect_trace(environ),
         "actual_agent_compliance": {"status": "unknown", "reason": "Configuration and hook output cannot prove an agent followed routing policy."},
     }
 
