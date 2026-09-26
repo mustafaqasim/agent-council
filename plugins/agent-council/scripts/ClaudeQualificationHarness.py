@@ -26,6 +26,11 @@ CANDIDATE_FILES = (
     "profiles/default.yaml",
     "standards/agent-council-standard.v2.yaml",
 )
+# The v1 native qualification format permanently uses CANDIDATE_FILES above.
+# Current package behavior has a separate, versioned identity and no bearing on
+# historical receipt acceptance. Extend its inventory only with existing files.
+BEHAVIORAL_INVENTORY = "standards/behavioral-inventory.v1.json"
+BEHAVIORAL_INVENTORY_SCHEMA = "agent-council.behavioral-inventory/v1"
 EXPECTED_CLAIMS = {
     "GFT01": {"route_r1_or_higher", "technical_implementation", "independent_operational_review", "ultimate_routing", "ultimate_final"},
     "GFT02": {"route_r3", "ultimate_design", "integration_evidence", "fault_evidence"},
@@ -74,6 +79,71 @@ def named_file_digest(files: list[tuple[str, Path]]) -> str:
 
 def candidate_digest() -> str:
     return named_file_digest([(relative, ROOT / relative) for relative in CANDIDATE_FILES])
+
+
+def inventory_file(root: Path, relative: str) -> Path:
+    """Require a canonical, regular plugin file without symlink indirection."""
+    if not isinstance(relative, str) or not relative or relative.startswith("/") or "\\" in relative or ":" in relative or any(ord(char) < 32 or ord(char) == 127 for char in relative) or any(part in {"", ".", ".."} for part in relative.split("/")):
+        raise ValueError("INVENTORY_PATH_UNSAFE")
+    path = root / relative
+    current = root
+    for part in relative.split("/"):
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"INVENTORY_PATH_UNSAFE:{relative}")
+    if not path_within(path, root):
+        raise ValueError(f"INVENTORY_PATH_UNSAFE:{relative}")
+    if not path.is_file():
+        raise ValueError(f"INVENTORY_FILE_MISSING:{relative}")
+    return path
+
+
+def inventory_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"INVENTORY_DUPLICATE_KEY:{key}")
+        value[key] = item
+    return value
+
+
+def current_behavioral_identity(root: Path = ROOT, inventory: str = BEHAVIORAL_INVENTORY) -> dict[str, Any]:
+    """Bind the canonical declaration and all declared bytes to a current ID.
+
+    JSON object ordering, whitespace and path ordering are immaterial. Schema,
+    identity version, membership, names and file bytes are all identity inputs.
+    Missing or future files cannot qualify. This is an identity, not a passing
+    evaluation receipt, and never replaces the historical candidate digest.
+    """
+    root = root.resolve()
+    declaration = json.loads(inventory_file(root, inventory).read_text(encoding="utf-8"), object_pairs_hook=inventory_object)
+    if not isinstance(declaration, dict) or set(declaration) != {"schema_version", "identity_version", "paths"} or declaration.get("schema_version") != BEHAVIORAL_INVENTORY_SCHEMA:
+        raise ValueError("INVENTORY_SCHEMA_INVALID")
+    version = declaration["identity_version"]
+    if not isinstance(version, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._/-]*", version):
+        raise ValueError("INVENTORY_VERSION_INVALID")
+    paths = declaration["paths"]
+    if not isinstance(paths, list) or not paths or any(not isinstance(path, str) for path in paths) or len(set(paths)) != len(paths):
+        raise ValueError("INVENTORY_PATHS_INVALID")
+    paths = sorted(paths)
+    if inventory in paths:
+        raise ValueError("INVENTORY_SELF_REFERENCE")
+    files = [(relative, inventory_file(root, relative)) for relative in paths]
+    identities = [(path.stat().st_dev, path.stat().st_ino) for _, path in files]
+    if len(set(identities)) != len(identities):
+        raise ValueError("INVENTORY_PATHS_INVALID:duplicate-file")
+    canonical = json.dumps({**declaration, "paths": paths}, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    inventory_sha = digest_bytes(canonical)
+    files_sha = named_file_digest(files)
+    behavioral_sha = digest_bytes(b"agent-council.behavioral-identity/v1\0" + bytes.fromhex(inventory_sha) + bytes.fromhex(files_sha))
+    return {
+        "schema_version": "agent-council.behavioral-identity/v1",
+        "identity_version": version,
+        "inventory_sha256": inventory_sha,
+        "files_sha256": files_sha,
+        "behavioral_sha256": behavioral_sha,
+        "paths": paths,
+    }
 
 
 def workspace_candidate_digest(workspace: Path) -> str:
@@ -378,6 +448,9 @@ def parser() -> argparse.ArgumentParser:
     scored.add_argument("--receipt", required=True, type=Path)
     paired = commands.add_parser("validate-pair")
     paired.add_argument("--receipt", required=True, action="append", type=Path)
+    identity = commands.add_parser("current-identity", help="Digest current declared behavior without changing historical qualification")
+    identity.add_argument("--root", default=ROOT, type=Path)
+    identity.add_argument("--inventory", default=BEHAVIORAL_INVENTORY, help="Canonical plugin-relative inventory path")
     return value
 
 
@@ -388,6 +461,8 @@ def main() -> int:
             result = prepare(args)
         elif args.command == "score":
             result = score(args)
+        elif args.command == "current-identity":
+            result = current_behavioral_identity(args.root, args.inventory)
         else:
             result = validate_pair(args)
     except (OSError, ValueError, KeyError) as error:

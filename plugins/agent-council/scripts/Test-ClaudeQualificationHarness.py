@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -62,8 +64,98 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def test_current_identity() -> None:
+    spec = importlib.util.spec_from_file_location("qualification_harness", HARNESS)
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    require(hasattr(harness, "current_behavioral_identity"), "current behavioral identity API is missing")
+    legacy_paths = (
+        "skills/agent-council/SKILL.md",
+        "skills/agent-council/references/model-adapters.yaml",
+        "skills/agent-council/references/project-profiles.yaml",
+        "skills/agent-council/references/compound-engineering.yaml",
+        "profiles/default.yaml",
+        "standards/agent-council-standard.v2.yaml",
+    )
+    require(harness.CANDIDATE_FILES == legacy_paths, "legacy qualification inventory changed")
+    require(harness.candidate_digest() == harness.named_file_digest([(name, ROOT / name) for name in legacy_paths]), "legacy candidate digest semantics changed")
+    with tempfile.TemporaryDirectory(prefix="agent-council-identity-") as temporary:
+        root = Path(temporary) / "plugin"
+        root.mkdir()
+        (root / "a.txt").write_text("first", encoding="utf-8")
+        (root / "b.txt").write_text("second", encoding="utf-8")
+        inventory = root / "inventory.json"
+        declaration = {"schema_version": "agent-council.behavioral-inventory/v1", "identity_version": "current/v1", "paths": ["b.txt", "a.txt"]}
+
+        def identify(value: object) -> dict[str, object]:
+            inventory.write_text(json.dumps(value), encoding="utf-8")
+            return harness.current_behavioral_identity(root, "inventory.json")
+
+        def refused(value: object, code: str) -> None:
+            try:
+                identify(value)
+            except ValueError as error:
+                require(code in str(error), f"unexpected inventory rejection: {error}")
+            else:
+                raise AssertionError(f"invalid inventory was accepted: {value}")
+
+        identity = identify(declaration)
+        require(identity["paths"] == ["a.txt", "b.txt"], "identity paths are not canonical")
+        require(identity == identify({**declaration, "paths": ["a.txt", "b.txt"]}), "inventory ordering changes identity")
+        (root / "untracked.txt").write_text("irrelevant", encoding="utf-8")
+        require(identity == identify(declaration), "undeclared file changes identity")
+        require(identity["behavioral_sha256"] != identify({**declaration, "paths": [*declaration["paths"], "untracked.txt"]})["behavioral_sha256"], "new declared behavior does not change identity")
+        (root / "b.txt").write_text("changed", encoding="utf-8")
+        require(identity["behavioral_sha256"] != identify(declaration)["behavioral_sha256"], "behavioral file change does not change identity")
+        (root / "b.txt").write_text("second", encoding="utf-8")
+        require(identity["behavioral_sha256"] != identify({**declaration, "identity_version": "current/v2"})["behavioral_sha256"], "identity version is not bound to digest")
+        require(identity["behavioral_sha256"] != identify({**declaration, "paths": ["a.txt"]})["behavioral_sha256"], "inventory membership is not bound to digest")
+        for paths in (["a.txt", "a.txt"], []):
+            refused({**declaration, "paths": paths}, "INVENTORY_PATHS_INVALID")
+        for name in ("../outside", "/tmp/outside", "a/../a.txt", "./a.txt", "a//b.txt", "C:\\outside", "a\\b.txt", "a.txt\n"):
+            refused({**declaration, "paths": [name]}, "INVENTORY_PATH_UNSAFE")
+        for name in ("missing.txt", "directory"):
+            (root / "directory").mkdir(exist_ok=True)
+            refused({**declaration, "paths": [name]}, "INVENTORY_FILE_MISSING")
+        (root / "alias.txt").symlink_to(root / "a.txt")
+        (root / "outside.txt").symlink_to(Path(temporary) / "outside.txt")
+        (root / "linked-dir").symlink_to(root, target_is_directory=True)
+        for name in ("alias.txt", "outside.txt", "linked-dir/a.txt"):
+            refused({**declaration, "paths": [name]}, "INVENTORY_PATH_UNSAFE")
+        os.link(root / "a.txt", root / "hardlink.txt")
+        refused({**declaration, "paths": ["a.txt", "hardlink.txt"]}, "INVENTORY_PATHS_INVALID")
+        refused({**declaration, "paths": ["inventory.json"]}, "INVENTORY_SELF_REFERENCE")
+        for value in ([], {**declaration, "schema_version": "unknown"}, {**declaration, "identity_version": ""}, {**declaration, "extra": True}, {**declaration, "paths": [1]}):
+            refused(value, "INVENTORY")
+        inventory.write_text('{"schema_version":"one","schema_version":"two"}', encoding="utf-8")
+        try:
+            harness.current_behavioral_identity(root, "inventory.json")
+        except ValueError as error:
+            require("INVENTORY_DUPLICATE_KEY" in str(error), "duplicate JSON key rejected for unexpected reason")
+        else:
+            raise AssertionError("duplicate inventory keys were accepted")
+        inventory.unlink()
+        inventory.symlink_to(root / "a.txt")
+        try:
+            harness.current_behavioral_identity(root, "inventory.json")
+        except ValueError as error:
+            require("INVENTORY_PATH_UNSAFE" in str(error), "inventory symlink rejected for unexpected reason")
+        else:
+            raise AssertionError("symlinked inventory was accepted")
+    current = run("current-identity")
+    require(current.returncode == 0, f"current identity command failed: {current.stdout} {current.stderr}")
+    packaged = json.loads(current.stdout)
+    require(set(legacy_paths) <= set(packaged["paths"]), "current inventory omits legacy behavior")
+    require({"hooks/hooks.json", "hooks/agent-council-routing.sh", "codex/routing-directive.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "scripts/ClaudeQualificationHarness.py"} <= set(packaged["paths"]), "current inventory omits activation or identity behavior")
+    historical = ROOT / "standards" / "model-qualifications"
+    pair = run("validate-pair", "--receipt", str(historical / "claude-opus-5-5-native-run-1.v1.json"), "--receipt", str(historical / "claude-opus-5-5-native-run-2.v1.json"))
+    require(pair.returncode == 0, f"historical Opus receipt validation changed: {pair.stdout} {pair.stderr}")
+    require(json.loads(pair.stdout)["candidate_sha256"] == "529adba3cacb3d099c468c59f880f33100b6a991e364c4c88219c186e7899cd2", "historical evidence was rewritten")
+
+
 def main() -> int:
     require(HARNESS.exists(), "Claude qualification harness is missing")
+    test_current_identity()
     with tempfile.TemporaryDirectory(prefix="agent-council-claude-qualification-") as temporary:
         root = Path(temporary)
         workspaces: list[Path] = []
