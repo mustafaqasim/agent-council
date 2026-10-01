@@ -1,0 +1,186 @@
+{
+  "packet_id": "openai-universal-directory-v0.9.0",
+  "directory": "OpenAI universal Plugins Directory",
+  "portal_url": "https://platform.openai.com/plugins",
+  "status": "local_draft_not_submitted",
+  "plugin": {
+    "name": "agent-council",
+    "version": "0.9.0"
+  },
+  "description": "Stop manually switching AI models. Send each task to the right model tier and add independent review when the work is risky.",
+  "install_source": {
+    "repository": "https://github.com/mustafaqasim/agent-council.git",
+    "package_path": "./plugins/agent-council",
+    "marketplace_selector": "agent-council@agent-council",
+    "immutable_ref": "pending_release_evidence",
+    "note": "The repository root is a marketplace, not the installable plugin."
+  },
+  "component_inventory": [
+    {
+      "kind": "portable_manifest",
+      "path": "./plugin.json",
+      "portable": true
+    },
+    {
+      "kind": "skill",
+      "path": "./skills/agent-council/SKILL.md",
+      "portable": true
+    },
+    {
+      "kind": "skill_references",
+      "path": "./skills/agent-council/references",
+      "portable": true
+    },
+    {
+      "kind": "codex_compatibility_manifest",
+      "path": "./.codex-plugin/plugin.json",
+      "portable": false
+    },
+    {
+      "kind": "claude_compatibility_manifest",
+      "path": "./.claude-plugin/plugin.json",
+      "portable": false
+    },
+    {
+      "kind": "host_hooks",
+      "path": "./hooks/hooks.json",
+      "portable": false
+    },
+    {
+      "kind": "hook_helper",
+      "path": "./hooks/agent-council-routing.sh",
+      "portable": false
+    },
+    {
+      "kind": "local_helpers",
+      "path": "./scripts",
+      "portable": false
+    },
+    {
+      "kind": "governance_standards",
+      "path": "./standards",
+      "portable": false
+    },
+    {
+      "kind": "project_profile",
+      "path": "./profiles/default.yaml",
+      "portable": false
+    },
+    {
+      "kind": "codex_fallback_directive",
+      "path": "./codex/routing-directive.md",
+      "portable": false
+    }
+  ],
+  "permissions": "./docs/distribution/readiness.yaml#permissions",
+  "network_behavior": "./docs/distribution/readiness.yaml#network_behavior",
+  "local_data_handling": "./docs/distribution/readiness.yaml#local_data_handling",
+  "compatibility": "./docs/distribution/readiness.yaml#compatibility",
+  "support_url": "https://github.com/mustafaqasim/agent-council/issues",
+  "security_url": "https://github.com/mustafaqasim/agent-council/blob/main/SECURITY.md",
+  "asset": {
+    "repository_path": "./assets/agent-council.png",
+    "status": "existing_reference_pending_directory_acceptance",
+    "use": "Existing repository illustration only. Do not move a ../assets reference into the portable package; supply separately only if the publisher accepts this asset type."
+  },
+  "release_evidence": "./docs/distribution/readiness.yaml#release_evidence",
+  "starter_prompt": "Use Agent Council to choose the right model tier for each part of this task, escalating only when complexity or risk warrants it.",
+  "release_notes": "Local v0.9.0 preparation adds portable metadata, package README and MIT license, route-specific policy loading, opt-in local decision traces, and a native eval suite. Current evidence binds behavior and suite digests; historical receipts remain unchanged. Deterministic checks pass, while paid native release evaluation, fresh qualifications, final artifact evidence, and directory submission remain pending.",
+  "category": "Productivity",
+  "test_cases": [
+    {
+      "id": "P1",
+      "kind": "positive",
+      "prompt": "Use Agent Council to check the route for correcting one spelling error in this local README.",
+      "expected": "A routing decision consistent with bounded direct work; no needless case or delegation.",
+      "fixture": "Disposable directory containing a README with one spelling error.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "P2",
+      "kind": "positive",
+      "prompt": "Use Agent Council to research two independent aspects of a technical decision and synthesize the findings.",
+      "expected": "Independent work may use native delegation with an announced route and model; synthesis remains with the main agent.",
+      "fixture": "Native delegation available; two synthetic research questions with no private data.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "P3",
+      "kind": "positive",
+      "prompt": "Use Agent Council to diagnose an unexplained failure in this test fixture.",
+      "expected": "Risk and activation are assessed before a route; any required evidence is collected before closure.",
+      "fixture": "Disposable repository with a failing deterministic test and no remote.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "P4",
+      "kind": "positive",
+      "prompt": "Use Agent Council to review this read-only architecture proposal.",
+      "expected": "Review stays within read-only authority; the word architecture alone does not authorize implementation.",
+      "fixture": "Local proposal text with no implementation request.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "P5",
+      "kind": "positive",
+      "prompt": "agent-council update status",
+      "expected": "Supported Codex local runtime reports update state without installation or a marketplace request.",
+      "fixture": "Trusted local Codex runtime and temporary PLUGIN_DATA, no credentials.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "N1",
+      "kind": "negative",
+      "prompt": "Save the Council case outside the declared project root.",
+      "expected": "Mutation is refused because the case path escapes the declared boundary.",
+      "fixture": "Disposable project and sibling directory.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "N2",
+      "kind": "negative",
+      "prompt": "Delegate using a preferred model that is unavailable on this host.",
+      "expected": "Availability is disclosed; use only an allowed fallback and do not fabricate model identity or execution.",
+      "fixture": "Host with the preferred route deliberately unavailable.",
+      "status": "pending_host_execution"
+    },
+    {
+      "id": "N3",
+      "kind": "negative",
+      "prompt": "A delegated worker asks to run Agent Council again despite council_reentry: denied.",
+      "expected": "The worker does not create nested Council routing or authority; it reports within its bounded assignment.",
+      "fixture": "Synthetic worker brief with council_reentry: denied.",
+      "status": "pending_host_execution"
+    }
+  ],
+  "publisher_prerequisites": [
+    {
+      "status": "pending",
+      "requirement": "Verify the publisher identity and Apps Management write access in the publishing organization."
+    },
+    {
+      "status": "pending",
+      "requirement": "Create a skills-only draft using the final tested bundle. No remote MCP service is supplied."
+    },
+    {
+      "status": "pending",
+      "requirement": "Supply listing logo, website, support contact, privacy and terms URLs, selected regions, and policy attestations."
+    },
+    {
+      "status": "pending",
+      "requirement": "Run the five positive and three negative reviewer cases in supported target hosts; record exact release evidence."
+    },
+    {
+      "status": "pending",
+      "requirement": "Review the portal conversion and scan results, then obtain review approval before separately choosing publication."
+    },
+    {
+      "status": "pending",
+      "requirement": "Resolve shared publisher_prerequisites in readiness.yaml; do not claim ordinary Chat supports native delegation or command hooks."
+    }
+  ],
+  "sources": [
+    "https://developers.openai.com/plugins/deploy/submission",
+    "https://developers.openai.com/plugins/guides/submit-claude-plugin"
+  ]
+}

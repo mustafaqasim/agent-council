@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,13 @@ class TraceTests(unittest.TestCase):
 
     def records(self):
         return [json.loads(line) for line in (self.home / ".local/state/agent-council/decisions.jsonl").read_text().splitlines()]
+
+    def test_current_models_and_null_effort_survive_round_trip(self):
+        for model, effort in (("gpt-6-luna", "low"), ("gpt-6-sol", "medium"), ("gpt-6-sol", "xhigh"), ("claude-haiku-4-5-20251001", None)):
+            self.run_cli(json.dumps({"outcome": "lightweight_routing", "requested_model": model, "observed_model": model, "requested_effort": effort, "observed_effort": effort}))
+        records = self.records()
+        self.assertEqual([(item["requested_model"], item["requested_effort"]) for item in records], [("gpt-6-luna", "low"), ("gpt-6-sol", "medium"), ("gpt-6-sol", "xhigh"), ("claude-haiku-4-5-20251001", None)])
+        self.assertTrue(all(item["requested_effort"] == item["observed_effort"] for item in records))
 
     def test_disabled_creates_nothing(self):
         for flag in ("", "0", "true"):
@@ -96,7 +104,7 @@ class TraceTests(unittest.TestCase):
     def test_quota_never_deletes_and_permission_failure_is_silent(self):
         self.run_cli('{"outcome":"direct_execution"}')
         file = self.home / '.local/state/agent-council/decisions.jsonl'
-        file.write_bytes(b' ' * trace.MAX_BYTES)
+        file.write_bytes(b' ' * (trace.MAX_BYTES - 1) + b'\n')
         before = file.read_bytes()
         self.run_cli('{"outcome":"direct_execution"}')
         self.assertEqual(file.read_bytes(), before)
@@ -123,6 +131,56 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(state['hook_observations'], 1)
         self.assertEqual(state['agent_reports'], 0)
         self.assertEqual(state['actual_agent_compliance'], 'unknown')
+
+    def test_hook_exposes_opt_in_writer_and_decision_is_agent_reported(self):
+        for event in ('SessionStart', 'UserPromptSubmit'):
+            hook = ['bash', str(ROOT / 'hooks/agent-council-routing.sh'), event]
+            disabled = subprocess.run(hook, input='private task', text=True, capture_output=True,
+                                      env={**self.env, 'AGENT_COUNCIL_TRACE': '0'})
+            self.assertNotIn('Decision trace command:', disabled.stdout)
+            result = subprocess.run(hook, input='private task', text=True, capture_output=True, env=self.env)
+            self.assertEqual(result.returncode, 0)
+            context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
+            command = next(line.removeprefix('Decision trace command: ') for line in context.splitlines()
+                           if line.startswith('Decision trace command: '))
+            document = json.loads(next(line.removeprefix('Decision trace JSON: ') for line in context.splitlines()
+                                       if line.startswith('Decision trace JSON: ')))
+            document['outcome'] = 'lightweight_routing'
+            written = subprocess.run(shlex.split(command), input=json.dumps(document), text=True,
+                                     capture_output=True, env=self.env)
+            self.assertEqual((written.returncode, written.stdout, written.stderr), (0, '', ''))
+        rows = self.records()
+        self.assertEqual([row['evidence_source'] for row in rows],
+                         ['hook_observed', 'agent_reported', 'hook_observed', 'agent_reported'])
+        self.assertEqual(rows[1]['outcome'], 'lightweight_routing')
+        self.assertEqual(rows[1]['activation_source'], 'host_instruction')
+        self.assertNotIn('private task', json.dumps(rows))
+        self.assertEqual(trace.inspect_trace(self.env)['actual_agent_compliance'], 'unknown')
+
+    def test_short_write_restores_previous_boundary(self):
+        self.run_cli('{"outcome":"direct_execution"}')
+        file = self.home / '.local/state/agent-council/decisions.jsonl'
+        before = file.read_bytes()
+        write = trace.os.write
+        record = trace.make_record({'outcome': 'lightweight_routing'}, self.env)
+        with patch.object(trace.os, 'write', side_effect=lambda fd, data: write(fd, data[:17])):
+            self.assertEqual(trace.append_record(record, self.env), 'unavailable')
+        self.assertEqual(file.read_bytes(), before)
+        self.assertEqual(trace.append_record(record, self.env), 'recorded')
+        self.assertEqual(len(self.records()), 2)
+
+    def test_torn_tail_is_unavailable_and_not_counted_as_report(self):
+        self.run_cli('{"outcome":"direct_execution"}')
+        file = self.home / '.local/state/agent-council/decisions.jsonl'
+        complete = file.read_bytes()
+        for tail in (b'{"outcome":', complete.rstrip(b'\n')):
+            file.write_bytes(complete + tail)
+            state = trace.inspect_trace(self.env)
+            self.assertEqual(state['state'], 'unavailable')
+            self.assertEqual(state['agent_reports'], 1)
+            self.assertEqual(state['unknown_records'], 1)
+            self.assertEqual(trace.append_record(trace.make_record({}, self.env), self.env), 'unavailable')
+            self.assertEqual(file.read_bytes(), complete + tail)
 
     def test_status_is_read_only_and_xdg_is_confined(self):
         self.assertEqual(trace.inspect_trace(self.env)['state'], 'unavailable')

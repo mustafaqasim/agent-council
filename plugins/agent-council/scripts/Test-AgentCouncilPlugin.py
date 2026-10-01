@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import hashlib
+import importlib.util
+import contextlib
+import io
+import runpy
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from ClaudeQualificationHarness import CANDIDATE_FILES, candidate_digest
+from ClaudeQualificationHarness import CANDIDATE_FILES, current_release_binding
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSERTION_COUNT = 0
@@ -47,8 +51,12 @@ def main() -> int:
     readme_path = repository_root / "README.md"
     source_checkout = (repository_root / "plugins" / "agent-council").resolve() == ROOT
     skill = (ROOT / "skills" / "agent-council" / "SKILL.md").read_text(encoding="utf-8")
+    lightweight = (ROOT / "skills/agent-council/references/lightweight-routing.yaml").read_text(encoding="utf-8")
+    governed = (ROOT / "skills/agent-council/references/governed-workflow.yaml").read_text(encoding="utf-8")
     adapters = (ROOT / "skills" / "agent-council" / "references" / "model-adapters.yaml").read_text(encoding="utf-8")
     registry = json.loads((ROOT / "standards" / "agent-model-registry.v2.yaml").read_text(encoding="utf-8"))
+    registry_v3 = json.loads((ROOT / "standards" / "agent-model-registry.v3.yaml").read_text(encoding="utf-8"))
+    qualification_plan = (ROOT / "standards" / "model-qualifications" / "provider-catalog-refresh.v3.yaml").read_text(encoding="utf-8")
     initial_claude_designation = json.loads((ROOT / "standards" / "model-qualifications" / "initial-claude-code-designation.v2.yaml").read_text(encoding="utf-8"))
     opus_55_correction = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-catalog-correction.v1.yaml").read_text(encoding="utf-8"))
     opus_55_qualification = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-native-qualification.v1.yaml").read_text(encoding="utf-8"))
@@ -73,7 +81,7 @@ def main() -> int:
 
     require(manifest["name"] == "agent-council", "plugin identity mismatch")
     require(claude_manifest["name"] == "agent-council", "Claude plugin identity mismatch")
-    require(manifest["version"] == claude_manifest["version"] == "0.8.2", "plugin manifest versions are not aligned")
+    require(manifest["version"] == claude_manifest["version"] == "0.9.0", "plugin manifest versions are not aligned")
     if source_checkout:
         marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")
@@ -81,20 +89,20 @@ def main() -> int:
         require(marketplace["metadata"]["version"] == marketplace["plugins"][0]["version"] == manifest["version"], "marketplace version is not aligned")
     require(isinstance(manifest["interface"]["defaultPrompt"], list) and all(isinstance(item, str) for item in manifest["interface"]["defaultPrompt"]), "default prompt must be a list of strings")
     require("name: agent-council" in skill, "skill identity mismatch")
-    activation_classes = ("debugging", "implementation", "refactoring", "planning", "architecture", "integration", "code review", "research", "analysis", "strategy", "business planning", "document creation", "editorial review")
+    activation_classes = ("debugging", "implementation", "planning", "architecture", "review", "research", "analysis", "strategy", "business planning", "document creation")
     require(all(item in skill for item in activation_classes), "skill omits a substantive routing class")
     require("read-only applicability check" in skill, "skill lacks the first-stage applicability check")
     require("Explicit invocation guarantees the applicability check, not delegation or automatic case creation." in skill, "explicit invocation contract is incomplete")
     require("Lightweight routing creates no Council case or receipts." in skill, "lightweight routing boundary is missing")
     require("developing a consulting offer from existing research" in skill, "separable consulting work does not default to lightweight routing")
-    require("If the preferred lightweight tier is unavailable" in skill, "lightweight availability fallback is missing")
+    require("If the preferred lightweight tier is unavailable" in lightweight, "lightweight availability fallback is missing")
     require("Lightweight routing may select an independently qualified higher tier" in adapters, "lightweight higher-tier fallback conflicts with governed substitution rules")
     require("Council check: direct execution" in skill and "Council check: lightweight routing" in skill and "Council check: governed case" in skill, "observable applicability outcomes are incomplete")
-    require("Reconsider formal governance only when material new evidence changes risk." in skill, "risk reconsideration boundary is missing")
-    require("council_reentry: denied" in skill and "do not invoke Agent Council" in skill, "nested Council reentry protection is missing")
-    require("Native standalone workflow is primary" in skill, "native standalone path is not primary")
-    require("optional interoperability path" in skill, "Compound Engineering optionality is unclear")
-    require("formatting-only changes" in skill and "deterministic checks using already-qualified components" in skill, "explicit negative activation cases are missing")
+    require("Reassess only when evidence changes" in skill, "risk reconsideration boundary is missing")
+    require("council_reentry: denied" in skill and "do not invoke Council" in skill, "nested Council reentry protection is missing")
+    require("Native standalone execution is primary" in skill, "native standalone path is not primary")
+    require("Compound Engineering is optional" in skill, "Compound Engineering optionality is unclear")
+    require("formatting, expected refusals" in skill and "deterministic checks with qualified components" in skill, "explicit negative activation cases are missing")
     selection_text = "Stop manually switching AI models. Send each task to the right model tier and add independent review when the work is risky."
     selection_prompt = "Use $agent-council to choose the right model tier for each part of this task, escalating only when complexity or risk warrants it."
     require(manifest["description"] == selection_text and claude_manifest["description"] == selection_text, "plugin manifest selection metadata is not aligned")
@@ -115,8 +123,9 @@ def main() -> int:
     require(benchmark_runner.is_file() and benchmark_tests.is_file(), "paired benchmark harness or its behavioral test is missing")
     require("PLUGIN_ROOT" in " ".join(session_commands + prompt_commands), "Codex plugin root is not passed to the update manager")
     require(chr(0x2014) not in routing_hook, "routing hook contains a prohibited em dash")
-    require("Before each lightweight or governed delegation" in skill, "visible dispatch notice is missing")
-    require(all(item in skill for item in ("route R3 and require ultimate design review, integration evidence across the affected consumers, and fault evidence", "separating the observed symptom from the hypothesized cause", "keep closure held", "both fresh native qualification runs", "preserve the user's existing authorization boundary", "do not change external-action authority")), "qualification behavior remains implicit")
+    require(all("Before each lightweight or governed delegation" in text for text in (lightweight, governed)), "visible dispatch notice is missing")
+    require(all(item in governed for item in ("ultimate design review, integration evidence across the affected consumers, and fault evidence", "separate the observed symptom from the hypothesized cause", "hold closure", "two fresh candidate-bound native qualification runs", "preserve existing authorization", "change external-action authority")), "qualification behavior remains implicit")
+    require("references/lightweight-routing.yaml" in skill and "references/governed-workflow.yaml" in skill, "route-specific policy is unreachable")
     require("Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing." in adapters, "lightweight native dispatch is incorrectly case-bound")
     require("governed_case_required_receipt" in adapters, "governed dispatch receipt requirements are not scoped")
     if source_checkout:
@@ -137,7 +146,7 @@ def main() -> int:
     require(initial_claude_designation["recorded_at"] == "2026-09-21T00:00:00Z" and len(initial_operational) == 1 and initial_operational[0]["model_id"] == "claude-opus-5", "initial Claude designation must not be backdated to Opus 5.5")
     require(opus_55_correction["recorded_at"] == "2026-09-24T03:42:36Z" and opus_55_correction["subject"]["status"] == "candidate" and opus_55_correction["evidence"]["official_release_url"] == "https://platform.claude.com/docs/en/models/opus-5-5/overview", "Opus 5.5 correction record is incomplete")
     require("Two fresh native qualification runs on identical candidate bytes." in opus_55_correction["promotion_requirements"] and "Each run records the observed Claude Code model identity as claude-opus-5-5." in opus_55_correction["promotion_requirements"], "Opus 5.5 promotion requirements are incomplete")
-    require(opus_55_qualification["pair_result"] == "passed" and opus_55_qualification["candidate"]["candidate_sha256"] == candidate_digest(), "Opus 5.5 qualification pair is missing or bound to the current candidate")
+    require(opus_55_qualification["pair_result"] == "passed", "historical Opus 5.5 qualification pair is missing")
     require(len(opus_55_qualification["native_runs"]) == 2 and len({run["session_id"] for run in opus_55_qualification["native_runs"]}) == 2 and all(run["actual_model_id"] == "claude-opus-5-5" and run["clean_context"] is True and run["blind"] is True and run["result"] == "passed" for run in opus_55_qualification["native_runs"]), "Opus 5.5 native qualification receipts are invalid")
     pair_validation = subprocess.run([sys.executable, str(ROOT / "scripts" / "ClaudeQualificationHarness.py"), "validate-pair", "--receipt", str(opus_55_run_paths[0]), "--receipt", str(opus_55_run_paths[1])], text=True, capture_output=True, check=False)
     require(pair_validation.returncode == 0 and json.loads(pair_validation.stdout)["result"] == "passed", "persisted Opus 5.5 run receipts do not form a valid pair")
@@ -148,7 +157,31 @@ def main() -> int:
     if source_checkout:
         require(git_candidate_digest(repository_root, opus_55_qualification["candidate"]["source_commit"]) == opus_55_qualification["candidate"]["candidate_sha256"], "Opus 5.5 source commit does not contain the qualified candidate bytes")
     require('operational_intelligence: "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5"' in adapters and "claude-code-v2-operational -> claude-opus-5, superseded after native qualification" in adapters, "Claude adapter promotion is invalid")
-    require('ordinary_agent: "provider_attested exact identity after alias selection"' in adapters and 'native_qualification: "explicit full-model selection plus provider-attested transcript identity"' in adapters, "Claude adapter assurance paths are conflated")
+    require('ordinary_agent: "provider_attested exact model and effort after plugin subagent selection"' in adapters and 'native_qualification: "explicit full-model selection plus provider-attested transcript identity"' in adapters, "Claude adapter assurance paths are conflated")
+    require("observe a native Agent invocation" in qualification_plan and "neither proves a native Agent dispatch" in qualification_plan, "Claude qualification plan omits actual subagent execution")
+    require("After promotion, rerun lightweight-positive" in qualification_plan and "a failed case blocks release" in qualification_plan, "model promotion and release validation form a circular gate")
+    agent_names = {
+        "ultimate_intelligence": "council-ultimate",
+        "operational_intelligence": "council-operational",
+        "technical_tactical_intelligence": "council-technical",
+        "worker_intelligence": "council-worker",
+    }
+    claude_v3 = [item for item in registry_v3["bindings"] if item["provider"] == "claude_code"]
+    require(len(claude_v3) == len(agent_names), "Claude v3 binding and agent counts differ")
+    inventoried_agents = {path for path in current_release_binding()["behavioral_identity"]["paths"] if path.startswith("agents/")}
+    packaged_agents = {path.relative_to(ROOT).as_posix() for path in (ROOT / "agents").glob("*.md")}
+    require(inventoried_agents == packaged_agents, "native Claude agent changes are missing from the release identity")
+    for binding in claude_v3:
+        agent_name = agent_names[binding["tier"]]
+        agent_text = (ROOT / "agents" / f"{agent_name}.md").read_text(encoding="utf-8")
+        parts = agent_text.split("---", 2)
+        require(len(parts) == 3 and parts[0] == "", f"{agent_name} lacks native agent frontmatter")
+        fields = dict(line.strip().split(": ", 1) for line in parts[1].strip().splitlines())
+        require(fields["name"] == agent_name and fields["model"] == binding["model_id"], f"{agent_name} model differs from the registry")
+        effort = binding["reasoning"]["default_effort"]
+        require(fields.get("effort") == effort if effort is not None else "effort" not in fields, f"{agent_name} effort differs from the registry")
+        require(fields["disallowedTools"] == "Agent" and "council_reentry: denied" in parts[2], f"{agent_name} can recurse into Council")
+        require(f'{binding["tier"]}: "agent-council:{agent_name}"' in adapters, f"{agent_name} is not mapped by the adapter")
     require("Only one outer orchestrator" in integration, "orchestration lease is missing")
     require("mode:return-to-caller" in integration, "CE return-to-caller boundary is missing")
     require("Native standalone workflow is primary" in integration, "CE integration lacks a native standalone path")
@@ -173,8 +206,30 @@ def main() -> int:
         local_profile.parent.mkdir(parents=True)
         local_profile.write_text('profile_id: "unrelated"\nexternal_action_authority: "granted"\n', encoding="utf-8")
         case_root = Path(temporary) / "case"
-        initialized = subprocess.run([sys.executable, str(runtime), "init-case", "--case-root", str(case_root), "--project-root", str(project_root), "--case-id", "case-plugin-check", "--route", "R1"], text=True, capture_output=True, check=False)
-        require(initialized.returncode == 0, "runtime case initialization failed")
+        namespace = runpy.run_path(str(runtime), run_name="agent_council_legacy_test_fixture")
+        runtime_globals = namespace["main"].__globals__
+        original_pins = runtime_globals["_pinned_artifact_material"]
+        runtime_globals["_pinned_artifact_material"] = lambda _version="v3": original_pins("v2")
+        with contextlib.redirect_stdout(io.StringIO()):
+            initialized = namespace["main"](["init-case", "--case-root", str(case_root), "--project-root", str(project_root), "--case-id", "case-plugin-check", "--route", "R1"])
+        require(initialized == 0, "historical case fixture initialization failed")
+        refused_root = project_root / "case-historical-new"
+        refused = subprocess.run([sys.executable, str(runtime), "init-case", "--case-root", str(refused_root), "--project-root", str(project_root), "--case-id", "case-historical-new", "--route", "R1", "--registry-version", "v2"], text=True, capture_output=True, check=False)
+        require(refused.returncode != 0 and not refused_root.exists(), "public CLI allowed a new historical-v2 case")
+        spec = importlib.util.spec_from_file_location("agent_council_init_boundary", runtime)
+        require(spec is not None and spec.loader is not None, "runtime import unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        programmatic_root = project_root / "case-historical-programmatic"
+        try:
+            module.init_case(programmatic_root, project_root, "case-historical-programmatic", "R1", registry_version="v2")
+        except module.AuthoringError as error:
+            require(str(error) == "HISTORICAL_REGISTRY_CREATION_REFUSED" and not programmatic_root.exists(), "programmatic API did not refuse a new historical-v2 case")
+        else:
+            raise AssertionError("programmatic API allowed a new historical-v2 case")
+        default_root = project_root / "case-new-default"
+        default_init = subprocess.run([sys.executable, str(runtime), "init-case", "--case-root", str(default_root), "--project-root", str(project_root), "--case-id", "case-new-default", "--route", "R1"], text=True, capture_output=True, check=False)
+        require(default_init.returncode == 0 and json.loads((default_root / "case.json").read_text())["registry"]["registry_version"] == "v3", "new CLI cases do not default to v3")
         state = json.loads((case_root / "case.json").read_text(encoding="utf-8"))
         profile_snapshot = state["project_profile"]
         require(profile_snapshot["profile_id"] == "default" and profile_snapshot["profile_sha256"] == state["policy_bundle"]["artifact_pins"]["profiles/default.yaml"], "default profile snapshot is not pinned")

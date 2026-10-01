@@ -5,21 +5,25 @@ from __future__ import annotations
 import ast
 import argparse
 import base64
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
+import runpy
 import stat
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 PACKAGE = Path(__file__).resolve().parents[4]
 RUNTIME = Path(__file__).with_name("Invoke-AgentCouncil.py")
-SCHEMAS = ("agent-council-record.schema.v2.yaml", "agent-model-registry.schema.v2.yaml", "provider-capability-receipt.schema.v2.yaml", "provider-dispatch-receipt.schema.v2.yaml", "agent-council-executing-bundle.schema.v2.yaml")
+SCHEMAS = ("agent-council-record.schema.v2.yaml", "agent-model-registry.schema.v2.yaml", "agent-model-registry.schema.v3.yaml", "provider-capability-receipt.schema.v2.yaml", "provider-dispatch-receipt.schema.v2.yaml", "agent-council-executing-bundle.schema.v2.yaml")
 ROLES = ("ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence")
 ROUTE_GATES = {
     "R1": ("ultimate-routing", "implementation-verification", "operational-review", "ultimate-final-disposition"),
@@ -43,7 +47,7 @@ EXPECTED_EFFORT = {"evidenced_higher_effort": "ultra", "resolver_default_effort"
 EVALUATOR_ASSURANCE_CASES = frozenset({"authority_dispatch_output_ref_missing", "authority_dispatch_output_ref_null", "authority_dispatch_output_ref_object", "authority_dispatch_output_ref_control", "authority_dispatch_capability_models_null", "object_stage", "object_decision_kind", "object_evidence_id", "object_provider", "packet_result_before_request", "packet_result_before_implementation", "packet_result_pair_mismatch"})
 # Each group below executes a distinct suite.  These are local structural
 # contracts, not evidence that a native provider adapter has been qualified.
-GROUPS = ("schema", "lifecycle", "stages", "routes", "provider", "authoring", "security", "dispatch-contracts")
+GROUPS = ("schema", "registry-schema", "lifecycle", "stages", "routes", "provider", "authoring", "security", "dispatch-contracts")
 FIXTURE_NOW = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
@@ -544,6 +548,54 @@ def test_schema() -> list[tuple[str, bool, str]]:
     return rows
 
 
+def candidate_v3_registry() -> dict[str, Any]:
+    """Derive a valid candidate from either an installed or promoted catalog."""
+    candidate = json.loads((PACKAGE / "standards/agent-model-registry.v3.yaml").read_bytes())
+    for binding in candidate["bindings"]:
+        binding["status"] = "candidate"
+        binding.pop("qualified_roles", None)
+        binding["binding_sha256"] = digest({key: value for key, value in binding.items() if key != "binding_sha256"})
+    for state in candidate["provider_states"].values():
+        state["council_status"] = "fail_closed_until_qualified"
+    candidate["registry_sha256"] = digest({key: value for key, value in candidate.items() if key != "registry_sha256"})
+    return candidate
+
+
+def test_registry_role_schema() -> list[tuple[str, bool, str]]:
+    """Optional Draft 2020-12 checks, run with jsonschema supplied externally."""
+    from jsonschema import Draft202012Validator
+    api, error = load_runtime()
+    if error:
+        return [("registry-role-schema-runtime", False, error)]
+    promotion = api.__globals__["_promotion_verifier"]()
+    schema = json.loads((PACKAGE / "standards/agent-model-registry.schema.v3.yaml").read_text())
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    candidate = candidate_v3_registry()
+    candidate_bytes = canonical(candidate)
+    protocols = {binding["binding_id"]: promotion.protocol.protocol_binding(binding) for binding in candidate["bindings"]}
+    promoted = json.loads(promotion.promote_registry(candidate_bytes, qualification_protocols=protocols))
+    legacy = json.loads(promotion.promote_registry(candidate_bytes))
+    rows = [("registry-schema-" + label, validator.is_valid(value), "declared registry schema accepts the exact supported transformation") for label, value in (("candidate", candidate), ("legacy-promoted", legacy), ("role-promoted", promoted))]
+    for label, change in (
+        ("empty-coverage", {"qualified_roles": []}),
+        ("duplicate-coverage", {"qualified_roles": ["ultimate_intelligence", "ultimate_intelligence"]}),
+        ("unknown-coverage", {"qualified_roles": ["ultimate_intelligence", "invented_role"]}),
+        ("missing-own-tier", {"qualified_roles": ["worker_intelligence"]}),
+        ("wrong-shape", {"qualified_roles": "ultimate_intelligence"}),
+        ("candidate-coverage", {"status": "candidate"}),
+        ("revoked-coverage", {"status": "revoked"}),
+        ("expired-coverage", {"status": "hard_expired"}),
+    ):
+        invalid = json.loads(json.dumps(promoted))
+        next(binding for binding in invalid["bindings"] if binding["tier"] == "ultimate_intelligence").update(change)
+        rows.append(("registry-schema-refuses-" + label, not validator.is_valid(invalid), "invalid role-coverage metadata fails the published JSON Schema"))
+    retired = json.loads(json.dumps(promoted))
+    retired["bindings"][0].update(status="retired", lifecycle={"retired_at": FIXTURE_NOW, "reason": "Binding retired", "replacement_binding_id": None})
+    rows.append(("registry-schema-retired-coverage", validator.is_valid(retired), "retirement preserves historical verified coverage without granting eligibility"))
+    return rows
+
+
 def load_runtime() -> tuple[Any | None, str | None]:
     if not RUNTIME.exists(): return None, "v2 runtime file is absent"
     try:
@@ -580,12 +632,23 @@ def cli_detail(*args: str) -> tuple[int, dict[str, Any], str]:
     if "--case-root" in command and "--project-root" not in command:
         case_root = Path(command[command.index("--case-root") + 1])
         command.extend(("--project-root", str(case_root.parent)))
-    completed = subprocess.run([sys.executable, str(RUNTIME), *command], capture_output=True, text=True, check=False)
+    if command and command[0] == "init-case" and "--registry-version" not in command:
+        namespace = runpy.run_path(str(RUNTIME), run_name="agent_council_legacy_test_fixture")
+        runtime_globals = namespace["main"].__globals__
+        original = runtime_globals["_pinned_artifact_material"]
+        runtime_globals["_pinned_artifact_material"] = lambda _version="v3": original("v2")
+        output, errors = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            code = namespace["main"](command)
+        stdout, stderr = output.getvalue(), errors.getvalue()
+    else:
+        completed = subprocess.run([sys.executable, str(RUNTIME), *command], capture_output=True, text=True, check=False)
+        code, stdout, stderr = completed.returncode, completed.stdout, completed.stderr
     try:
-        response = json.loads(completed.stdout)
+        response = json.loads(stdout)
     except json.JSONDecodeError:
-        response = {"result": "invalid", "stdout": completed.stdout, "stderr": completed.stderr}
-    return completed.returncode, response, completed.stderr
+        response = {"result": "invalid", "stdout": stdout, "stderr": stderr}
+    return code, response, stderr
 
 
 def cli(*args: str) -> tuple[int, dict[str, Any]]:
@@ -903,6 +966,10 @@ def test_public_cli_boundaries() -> list[tuple[str, bool, str]]:
         manifest_code, manifest = cli("init-case", "--case-root", str(manifest_root), "--case-id", "case-manifest-status", "--route", "R2")
         manifest_state = manifest.get("state", {})
         artifact_pins = manifest_state.get("policy_bundle", {}).get("artifact_pins", {})
+        for policy_ref in ("lightweight-routing.yaml", "governed-workflow.yaml"):
+            policy_path = "skills/agent-council/references/" + policy_ref
+            changed_pins = dict(artifact_pins, **{policy_path: token("changed-" + policy_ref)})
+            rows.append(("new-case-pins-" + policy_ref, policy_path in artifact_pins and digest(changed_pins) != digest(artifact_pins), "new cases bind route-specific policy bytes"))
         stable_before = manifest_state.get("engineering_candidate", {}).get("package_sha256")
         status_only_promotion = {"status": "promoted"}
         changed_manifest_pins = dict(artifact_pins)
@@ -1501,11 +1568,603 @@ def test_dispatch_contracts() -> list[tuple[str, bool, str]]:
     return rows
 
 
+def test_binding_effort_contracts() -> list[tuple[str, bool, str]]:
+    """Exercise v3 policy using qualified local fixtures, never qualifying a provider."""
+    rows: list[tuple[str, bool, str]] = []
+    spec = importlib.util.spec_from_file_location("agent_council_effort_contracts", RUNTIME)
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    catalog = json.loads((PACKAGE / "standards/agent-model-registry.v3.yaml").read_text())
+
+    def seal_registry(value):
+        for item in value["bindings"]:
+            item["binding_sha256"] = digest({key: nested for key, nested in item.items() if key != "binding_sha256"})
+        value["registry_sha256"] = digest({key: nested for key, nested in value.items() if key != "registry_sha256"})
+        return value
+
+    def registry_valid(value):
+        return runtime._registry_valid(value, {"registry_version": value["registry_version"], "registry_sha256": value["registry_sha256"]})
+
+    rows.append(("v3-candidate-registry-valid", registry_valid(catalog), "v3 catalog has valid reasoning policy and hashes"))
+    expected_defaults = {
+        ("codex", "ultimate_intelligence"): "xhigh", ("codex", "operational_intelligence"): "xhigh",
+        ("codex", "technical_tactical_intelligence"): "medium", ("codex", "worker_intelligence"): "low",
+        ("claude_code", "ultimate_intelligence"): "high", ("claude_code", "operational_intelligence"): "medium",
+        ("claude_code", "technical_tactical_intelligence"): "medium", ("claude_code", "worker_intelligence"): None,
+    }
+    rows.append(("v3-per-binding-defaults", {(item["provider"], item["tier"]): item["reasoning"]["default_effort"] for item in catalog["bindings"]} == expected_defaults, "every provider role has its explicit default"))
+    for label, mutate in (
+        ("missing-policy", lambda value: value["bindings"][0].pop("reasoning")),
+        ("default-not-allowed", lambda value: value["bindings"][0]["reasoning"].update(default_effort="ultra", allowed_efforts=["high"])),
+        ("unsupported-with-efforts", lambda value: value["bindings"][0]["reasoning"].update(supported=False, default_effort=None, allowed_efforts=["high"])),
+        ("unsupported-with-default", lambda value: value["bindings"][0]["reasoning"].update(supported=False, default_effort="high", allowed_efforts=[])),
+        ("supported-with-null", lambda value: value["bindings"][0]["reasoning"].update(default_effort=None)),
+        ("duplicate-efforts", lambda value: value["bindings"][0]["reasoning"].update(allowed_efforts=["xhigh", "xhigh"])),
+        ("unknown-effort", lambda value: value["bindings"][0]["reasoning"].update(default_effort="invented", allowed_efforts=["invented"])),
+        ("unknown-policy-field", lambda value: value["bindings"][0]["reasoning"].update(arbitrary=True)),
+        ("undeclared-provider", lambda value: value["bindings"][0].update(provider="arbitrary")),
+    ):
+        invalid = json.loads(json.dumps(catalog)); mutate(invalid); seal_registry(invalid)
+        rows.append((f"v3-{label}-refused", not registry_valid(invalid), "even resealed invalid binding policy is refused"))
+    rows.append(("no-effort-capability-exact-null", runtime._capability_efforts_valid([None]) and all(not runtime._capability_efforts_valid(value) for value in ([], [None, "high"], ["none"], ["null"], [None, None], None, {})), "no-effort attestation is exactly [null], never absent, mixed or a string"))
+
+    real_material = runtime._pinned_artifact_material
+
+    runtime._promotion_verifier()
+    fixture_spec = importlib.util.spec_from_file_location("agent_council_promotion_fixtures", PACKAGE / "scripts/Test-AgentCouncilPromotion.py")
+    fixture_module = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixture_module)
+    promotion_files, _ = fixture_module.fixture(registry_value=candidate_v3_registry())
+
+    def fixture_material(registry_version="v2"):
+        pins, material, value = real_material(registry_version)
+        if registry_version == "v3":
+            snapshot = dict(material) | promotion_files
+            material = tuple(sorted(snapshot.items()))
+            pins = {name: hashlib.sha256(raw).hexdigest() for name, raw in material}
+            value = json.loads(snapshot["standards/agent-model-registry.v3.yaml"])
+        return pins, material, value
+
+    def refused(root, expected, *args, **kwargs):
+        before = (root / "case.json").read_bytes()
+        try:
+            runtime.dispatch_plan(root, *args, **kwargs)
+        except runtime.AuthoringError as exc:
+            return exc.code == expected and (root / "case.json").read_bytes() == before
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="agent-council-effort-") as temporary:
+        root = Path(temporary).resolve()
+        candidate_root = root / "candidate"
+        runtime.init_case(candidate_root, root, "case-candidate-effort", "R1")
+        candidate_state = json.loads((candidate_root / "case.json").read_text())
+        rows.append(("new-case-defaults-to-v3", candidate_state["registry"]["registry_version"] == "v3", "new cases cannot silently select the historical v2 catalog"))
+        rows.append(("v3-init-pins-catalog-and-policy", all(path in candidate_state["policy_bundle"]["artifact_pins"] for path in ("standards/agent-model-registry.v3.yaml", "standards/agent-model-registry.schema.v3.yaml", "standards/model-qualifications/provider-catalog-refresh.v3.yaml")), "new v3 cases pin exact catalog, schema and catalog policy bytes"))
+        try:
+            runtime.dispatch_plan(candidate_root, "codex", "ultimate_intelligence", "context-candidate")
+            candidate_refused = False
+        except runtime.AuthoringError:
+            candidate_refused = True
+        rows.append(("v3-candidate-binding-fails-closed", candidate_refused, "catalog availability never grants dispatch authority"))
+
+        with patch.object(runtime, "_pinned_artifact_material", fixture_material):
+            case_root = root / "qualified-fixture"
+            runtime.init_case(case_root, root, "case-qualified-effort", "R1", registry_version="v3")
+            for provider in ("codex", "claude_code"):
+                for role in ROLES:
+                    selected = next(item for item in catalog["bindings"] if item["provider"] == provider and item["tier"] == role)
+                    effort = expected_defaults[(provider, role)]
+                    context_id = f"context-{provider}-{role}"
+                    kind = "routing" if role == "ultimate_intelligence" else "review" if role == "operational_intelligence" else "implementation"
+                    runtime.capture_capability(case_root, provider, selected["model_id"], [effort], context_id, None)
+                    plan = runtime.dispatch_plan(case_root, provider, role, context_id)
+                    rows.append((f"v3-default-{provider}-{role}", plan["effort"] == effort, "omitted effort resolves from exact provider role binding"))
+                    result = runtime.dispatch_capture(case_root, provider, plan["plan_nonce"], f"task-{provider}-{role}", selected["model_id"], effort, context_id, "output-effort-contract", kind)
+                    saved = json.loads((case_root / "case.json").read_text())
+                    payload = saved["events"][-1]["payload"]
+                    rows.append((f"v3-capture-{provider}-{role}", result["code"] == "DISPATCH_CAPTURED" and payload["selected_effort"] == payload["attested_effort"] == effort and payload["capability_efforts"] == [effort], "receipt preserves exact effort, including explicit null"))
+                    if role in {"technical_tactical_intelligence", "worker_intelligence"}:
+                        case_view = {key: saved[key] for key in ("registry", "route", "engineering_candidate", "cycle_id")}
+                        case_view.update(provider_capability_receipt=saved["capabilities"][context_id], provider_dispatch_receipt=result["receipt"])
+                        reduced = {"active": {"dispatch": saved["events"][-1]}, "history": {"packet": {"record_type": "packet", "payload": {"bounded_worker": True}}}}
+                        selected_effort, problem = runtime._route_and_provider(case_view, reduced)
+                        rows.append((f"v3-role-policy-resolution-{provider}-{role}", problem is None and selected_effort == effort, "implementation resolves the requested role even when one model holds two roles"))
+                    if role == "worker_intelligence" and provider == "claude_code":
+                        rows.append(("v3-haiku-worker-effort-refused", refused(case_root, "EFFORT_POLICY_INVALID", provider, role, context_id, "high"), "unsupported worker effort cannot be requested"))
+                    if role == "technical_tactical_intelligence" and provider == "codex":
+                        rows.append(("v3-sol-effort-downgrade-refused", refused(case_root, "EFFORT_POLICY_INVALID", provider, role, context_id, "low"), "binding default remains a minimum"))
+                        rows.append(("v3-sol-null-effort-refused", refused(case_root, "EFFORT_POLICY_INVALID", provider, role, context_id, None), "null is not a bypass for a model with effort controls"))
+                        rows.append(("v3-sol-unevidenced-escalation-refused", refused(case_root, "EFFORT_POLICY_INVALID", provider, role, context_id, "high"), "effort above a binding default requires evidence"))
+                context_id = f"context-unavailable-{provider}"
+                rows.append((f"v3-missing-capability-{provider}", refused(case_root, "CAPABILITY_REQUIRED", provider, "ultimate_intelligence", context_id), "v3 plans require capability evidence before selecting effort"))
+            runtime.capture_capability(case_root, "codex", "gpt-6-sol", ["high"], "context-wrong-effort", None)
+            rows.append(("v3-capability-effort-mismatch", refused(case_root, "PROVIDER_RECEIPT_MISMATCH", "codex", "operational_intelligence", "context-wrong-effort"), "native capability must include the selected binding default"))
+            runtime.capture_capability(case_root, "codex", "gpt-6-astra", ["xhigh"], "context-freshness", None)
+            fresh_plan = runtime.dispatch_plan(case_root, "codex", "ultimate_intelligence", "context-freshness")
+            def capture_refused(expected):
+                before = (case_root / "case.json").read_bytes()
+                try:
+                    runtime.dispatch_capture(case_root, "codex", fresh_plan["plan_nonce"], "task-freshness", "gpt-6-astra", "xhigh", "context-freshness", "output-freshness", "routing")
+                except runtime.AuthoringError as exc:
+                    return exc.code == expected and (case_root / "case.json").read_bytes() == before
+                return False
+            class Tomorrow(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return datetime.now(tz) + timedelta(days=2)
+            with patch.object(runtime, "datetime", Tomorrow):
+                rows.append(("v3-plan-rechecks-capability-freshness", refused(case_root, "CAPABILITY_STALE", "codex", "ultimate_intelligence", "context-freshness"), "a once-valid capability cannot authorize a dispatch after its TTL"))
+                rows.append(("v3-capture-rechecks-capability-freshness", capture_refused("CAPABILITY_STALE"), "capability expiry before capture refuses without consuming the plan"))
+            runtime.capture_capability(case_root, "codex", "gpt-6-astra", ["xhigh"], "context-freshness", None)
+            rows.append(("v3-capability-refresh-invalidates-existing-plan", capture_refused("DISPATCH_PLAN_IDENTITY_MISMATCH"), "even an identical model/effort observation cannot replace the exact planned capability receipt"))
+            fresh_plan = runtime.dispatch_plan(case_root, "codex", "ultimate_intelligence", "context-freshness")
+            retired = json.loads(json.dumps(catalog))
+            retired["bindings"][0]["status"] = "retired"
+            retired["bindings"][0]["lifecycle"] = {"retired_at": FIXTURE_NOW, "reason": "Provider retired this model", "replacement_binding_id": None}
+            seal_registry(retired)
+            read_text = Path.read_text
+            live_catalog = PACKAGE / "standards/agent-model-registry.v3.yaml"
+            def current_catalog(path, *args, **kwargs):
+                return json.dumps(retired) if path == live_catalog else read_text(path, *args, **kwargs)
+            with patch.object(Path, "read_text", current_catalog):
+                rows.append(("v3-current-retirement-vetoes-pinned-case", refused(case_root, "BINDING_RETIRED", "codex", "ultimate_intelligence", "context-freshness"), "current exact-binding retirement blocks new execution without rewriting pinned history"))
+                rows.append(("v3-current-retirement-vetoes-pending-capture", capture_refused("DISPATCH_PLAN_STALE"), "retirement after planning invalidates capture and leaves the plan unconsumed"))
+    rows.append(("v3-null-outcome-preserved", runtime._outcome("accepted", "CASE_ACCEPTED", None).get("effort", "missing") is None, "an accepted no-effort result serializes an explicit null"))
+    return rows
+
+
+def test_model_resilience_contracts() -> list[tuple[str, bool, str]]:
+    """Synthetic selector contracts do not supply native qualification evidence."""
+    rows = []
+    spec = importlib.util.spec_from_file_location("agent_council_resilience_contracts", RUNTIME)
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    catalog = candidate_v3_registry()
+    role = "operational_intelligence"
+    primary = next(item for item in catalog["bindings"] if item["provider"] == "codex" and item["tier"] == role)
+    primary["status"] = "qualified"
+    primary["selection"] = {"role": "primary", "priority": 0, "fallback_for": []}
+    reserve = json.loads(json.dumps(primary))
+    reserve.update(binding_id="codex-reserve-a", model_id="qualified-reserve-model", selection={"role": "reserve", "priority": 1, "fallback_for": []})
+    second = json.loads(json.dumps(reserve)); second.update(binding_id="codex-reserve-b", model_id="qualified-second-reserve")
+    higher = next(item for item in catalog["bindings"] if item["provider"] == "codex" and item["tier"] == "ultimate_intelligence")
+    higher["status"] = "qualified"
+    higher["qualified_roles"] = [role, higher["tier"]]
+    higher["selection"] = {"role": "primary", "priority": 0, "fallback_for": [primary["binding_id"]]}
+    catalog["bindings"].extend([reserve, second])
+    catalog["provider_states"]["codex"]["council_status"] = "partially_qualified"
+    for item in catalog["bindings"]:
+        item["binding_sha256"] = digest({key: value for key, value in item.items() if key != "binding_sha256"})
+    catalog["registry_sha256"] = digest({key: value for key, value in catalog.items() if key != "registry_sha256"})
+    rows.append(("resilience-registry-selection-valid", runtime._registry_valid(catalog, catalog), "partial provider qualification and explicit fallback edges retain exact binding qualification"))
+    def capability(models, **changes):
+        value = {"receipt_type": "provider_capability", "receipt_id": "capability-resilience", "provider": "codex", "observed_at": FIXTURE_NOW, "context_id": "context-resilience", "models": models, "efforts": ["xhigh"]} | changes
+        value["receipt_sha256"] = digest(value)
+        return value
+    def resolve(value, selected_catalog=None):
+        return runtime._resolve_binding(selected_catalog or catalog, "codex", role, value, "context-resilience")
+    def refuses(value, expected, selected_catalog=None):
+        try:
+            resolve(value, selected_catalog)
+        except runtime.AuthoringError as exc:
+            return exc.code == expected
+        return False
+    selected, resolution = resolve(capability([primary["model_id"], reserve["model_id"], higher["model_id"]]))
+    rows.append(("resilience-primary-preferred", selected == primary and resolution["kind"] == "primary", "available primary wins over qualified reserves and higher tiers"))
+    available = capability([reserve["model_id"], second["model_id"], higher["model_id"]])
+    selected, resolution = resolve(available)
+    rows.append(("resilience-deterministic-same-role", selected == reserve and resolution["kind"] == "same_role_fallback", "same-role reserve wins before higher tier with binding ID breaking equal priorities"))
+    reversed_catalog = dict(catalog, bindings=list(reversed(catalog["bindings"])))
+    rows.append(("resilience-order-independent", resolve(available, reversed_catalog)[0] == reserve, "registry array order cannot change dispatch selection"))
+    selected, resolution = resolve(capability([higher["model_id"]]))
+    rows.append(("resilience-explicit-higher-tier", selected == higher and resolution["kind"] == "higher_tier_fallback" and resolution["requested_binding_id"] == primary["binding_id"], "higher tier requires an explicit edge to the requested primary"))
+    for label, coverage in (("missing", None), ("wrong-role", [higher["tier"]]), ("empty", [])):
+        denied = json.loads(json.dumps(catalog))
+        binding = next(item for item in denied["bindings"] if item["binding_id"] == higher["binding_id"])
+        if coverage is None:
+            binding.pop("qualified_roles")
+        else:
+            binding["qualified_roles"] = coverage
+        binding["binding_sha256"] = digest({key: value for key, value in binding.items() if key != "binding_sha256"})
+        denied["registry_sha256"] = digest({key: value for key, value in denied.items() if key != "registry_sha256"})
+        rows.append(("resilience-" + label + "-role-coverage-refused", refuses(capability([higher["model_id"]]), "ROLE_QUALIFICATION_REQUIRED", denied), "a higher-tier fallback edge never supplies missing requested-role qualification"))
+        forged_payload = dict(binding, selected_effort="xhigh", model_resolution=resolution)
+        rows.append(("resilience-" + label + "-role-coverage-replay-refused", not runtime._resolution_matches(denied, forged_payload, role, capability([higher["model_id"]])), "replay cannot recover authority from an uncovered fallback"))
+    for label, coverage in (("duplicate", [higher["tier"], higher["tier"]]), ("unknown", [higher["tier"], "invented_role"]), ("own-tier-missing", [role]), ("wrong-shape", higher["tier"])):
+        denied = json.loads(json.dumps(catalog))
+        binding = next(item for item in denied["bindings"] if item["binding_id"] == higher["binding_id"])
+        binding["qualified_roles"] = coverage
+        binding["binding_sha256"] = digest({key: value for key, value in binding.items() if key != "binding_sha256"})
+        denied["registry_sha256"] = digest({key: value for key, value in denied.items() if key != "registry_sha256"})
+        rows.append(("resilience-" + label + "-coverage-registry-refused", not runtime._registry_valid(denied, denied), "resealed coverage must name unique known roles including the binding tier"))
+    try:
+        runtime._resolve_binding(catalog, "codex", role, capability([higher["model_id"]], efforts=["ultra"]), "context-resilience", "ultra")
+        fallback_effort_refused = False
+    except runtime.AuthoringError as exc:
+        fallback_effort_refused = exc.code == "EFFORT_POLICY_INVALID"
+    rows.append(("resilience-fallback-nondefault-effort-refused", fallback_effort_refused, "requested-role coverage proves only the binding default effort even if capability advertises another effort"))
+    denied = json.loads(json.dumps(catalog))
+    next(item for item in denied["bindings"] if item["binding_id"] == higher["binding_id"])["selection"]["fallback_for"] = []
+    rows.append(("resilience-implicit-higher-tier-refused", refuses(capability([higher["model_id"]]), "PROVIDER_RECEIPT_MISMATCH", denied), "model rank alone cannot grant a role substitution"))
+    for status in ("candidate", "revoked", "hard_expired", "retired"):
+        denied = json.loads(json.dumps(catalog))
+        next(item for item in denied["bindings"] if item["binding_id"] == reserve["binding_id"])["status"] = status
+        rows.append(("resilience-" + status + "-reserve-refused", refuses(capability([reserve["model_id"]]), "PROVIDER_RECEIPT_MISMATCH", denied), "available models must hold a currently qualified binding"))
+    for label, changes, code in (
+        ("stale", {"observed_at": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()}, "CAPABILITY_STALE"),
+        ("future", {"observed_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}, "CAPABILITY_STALE"),
+        ("offset-missing", {"observed_at": "2026-10-01T12:00:00"}, "SCHEMA_VALIDATION_FAILED"),
+        ("wrong-context", {"context_id": "context-other"}, "PROVIDER_RECEIPT_MISMATCH"),
+        ("wrong-provider", {"provider": "claude_code"}, "PROVIDER_RECEIPT_MISMATCH"),
+        ("wrong-effort", {"efforts": ["low"]}, "PROVIDER_RECEIPT_MISMATCH"),
+    ):
+        rows.append(("resilience-" + label + "-refused", refuses(capability([reserve["model_id"]], **changes), code), "capability identity, freshness and exact effort remain dispatch prerequisites"))
+    selected, resolution = resolve(available)
+    payload = dict(selected, selected_effort="xhigh", model_resolution=resolution)
+    rows.append(("resilience-fallback-replay", runtime._resolution_matches(catalog, payload, role, available), "captured fallback replays against exact capability and pinned policy"))
+    payload["model_resolution"] = dict(resolution, kind="higher_tier_fallback")
+    rows.append(("resilience-fallback-tamper-refused", not runtime._resolution_matches(catalog, payload, role, available), "caller cannot relabel fallback provenance"))
+    different = json.loads(json.dumps(catalog))
+    different_primary = next(item for item in different["bindings"] if item["binding_id"] == primary["binding_id"])
+    different_primary["reasoning"]["default_effort"] = "medium"
+    different_primary["binding_sha256"] = digest({key: value for key, value in different_primary.items() if key != "binding_sha256"})
+    different["registry_sha256"] = digest({key: value for key, value in different.items() if key != "registry_sha256"})
+    different_available = capability([primary["model_id"], higher["model_id"]])
+    selected, resolution = resolve(different_available, different)
+    payload = dict(selected, selected_effort="xhigh", model_resolution=resolution)
+    rows.append(("resilience-different-defaults-replay", resolution["requested_effort"] == "binding_default" and resolution["kind"] == "higher_tier_fallback" and runtime._resolution_matches(different, payload, role, different_available), "omitted effort intent survives a higher-tier fallback with a different binding default"))
+    selected, explicit = runtime._resolve_binding(catalog, "codex", role, available, "context-resilience", "xhigh")
+    rows.append(("resilience-explicit-effort-preserved", explicit["requested_effort"] == "xhigh" and runtime._resolution_matches(catalog, dict(selected, selected_effort="xhigh", model_resolution=explicit), role, available), "explicit caller effort is retained separately from the resolved effort"))
+    v2 = json.loads((PACKAGE / "standards/agent-model-registry.v2.yaml").read_text())
+    historical = dict(next(item for item in v2["bindings"] if item["status"] == "revoked"), status="qualified")
+    try:
+        runtime._require_current_binding_eligible(historical, "v2")
+        vetoed = False
+    except runtime.AuthoringError as exc:
+        vetoed = exc.code == "BINDING_RETIRED"
+    rows.append(("resilience-v2-current-revocation-veto", vetoed, "a historical qualified v2 binding cannot override its current packaged revocation"))
+    retired_registry = json.loads(json.dumps(catalog))
+    retired_primary = next(item for item in retired_registry["bindings"] if item["binding_id"] == primary["binding_id"])
+    retired_primary["status"] = "retired"
+    retired_primary["lifecycle"] = {"retired_at": FIXTURE_NOW, "reason": "Provider retired this binding", "replacement_binding_id": reserve["binding_id"]}
+    retired_primary["binding_sha256"] = digest({key: value for key, value in retired_primary.items() if key != "binding_sha256"})
+    retired_registry["registry_sha256"] = digest({key: value for key, value in retired_registry.items() if key != "registry_sha256"})
+    all_available = capability([primary["model_id"], reserve["model_id"], higher["model_id"]])
+    selected, resolution = runtime._resolve_binding(catalog, "codex", role, all_available, "context-resilience", current_registry=retired_registry)
+    rows.append(("resilience-current-retirement-selects-qualified-reserve", selected == reserve and resolution["kind"] == "same_role_fallback" and resolution["current_registry_sha256"] == retired_registry["registry_sha256"], "a still-visible retired primary is skipped before testing the qualified reserve"))
+    payload = dict(selected, selected_effort="xhigh", model_resolution=resolution)
+    rows.append(("resilience-retirement-snapshot-replays", runtime._resolution_matches(catalog, payload, role, all_available), "historical fallback replays against the captured eligibility snapshot without package reads"))
+    tampered = json.loads(json.dumps(payload))
+    next(item for item in tampered["model_resolution"]["eligibility_registry"]["bindings"] if item["binding_id"] == primary["binding_id"])["status"] = "qualified"
+    rows.append(("resilience-eligibility-snapshot-tamper-refused", not runtime._resolution_matches(catalog, tampered, role, all_available), "eligibility snapshot content must match its registry and binding hashes"))
+    fixture_spec = importlib.util.spec_from_file_location("agent_council_resilience_promotion_fixtures", PACKAGE / "scripts/Test-AgentCouncilPromotion.py")
+    fixture_module = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixture_module)
+    candidate = json.loads(json.dumps(catalog))
+    for item in candidate["bindings"]:
+        item["status"] = "candidate"
+        item.pop("qualified_roles", None)
+        item["binding_sha256"] = digest({key: value for key, value in item.items() if key != "binding_sha256"})
+    for summary in candidate["provider_states"].values():
+        summary["council_status"] = "fail_closed_until_qualified"
+    candidate["registry_sha256"] = digest({key: value for key, value in candidate.items() if key != "registry_sha256"})
+    proof_files, _ = fixture_module.fixture(registry_value=candidate)
+    real_material = runtime._pinned_artifact_material
+    def fixture_material(registry_version="v3"):
+        _, material, _ = real_material(registry_version)
+        snapshot = dict(material) | proof_files
+        return {name: hashlib.sha256(raw).hexdigest() for name, raw in snapshot.items()}, tuple(sorted(snapshot.items())), json.loads(snapshot["standards/agent-model-registry.v3.yaml"])
+    with tempfile.TemporaryDirectory(prefix="agent-council-resilience-") as temporary:
+        root = Path(temporary).resolve()
+        case_root = root / "case"
+        with patch.object(runtime, "_pinned_artifact_material", fixture_material):
+            runtime.init_case(case_root, root, "case-resilience", "R1")
+        for label, expected in (("same-role", reserve),):
+            context = "context-" + label
+            runtime.capture_capability(case_root, "codex", expected["model_id"], ["xhigh"], context, None)
+            plan = runtime.dispatch_plan(case_root, "codex", role, context)
+            result = runtime.dispatch_capture(case_root, "codex", plan["plan_nonce"], "task-" + label, expected["model_id"], "xhigh", context, "output-" + label, "review")
+            saved = runtime._read_local_case(case_root)
+            rows.append(("resilience-" + label + "-dispatch-capture-replay", result["code"] == "DISPATCH_CAPTURED" and plan["binding_id"] == expected["binding_id"] and runtime._authority_dispatch_valid(saved["events"][-1], saved, role), "qualified fallback traverses immutable planning, capture and authority replay with pinned promotion proof"))
+            rows.append(("resilience-" + label + "-notice-selected-cost", plan["user_notice"]["cost_class"] == runtime._NOTICE_COST_CLASS[expected["tier"]] and plan["user_notice"]["role"] == role, "notice retains requested responsibility while exposing selected model cost class"))
+        context = "context-retirement-reserve"
+        runtime.capture_capability(case_root, "codex", reserve["model_id"], ["xhigh"], context, None)
+        read_text = Path.read_text
+        catalog_path = PACKAGE / "standards/agent-model-registry.v3.yaml"
+        def retired_catalog(path, *args, **kwargs):
+            return json.dumps(retired_registry) if path == catalog_path else read_text(path, *args, **kwargs)
+        with patch.object(Path, "read_text", retired_catalog):
+            plan = runtime.dispatch_plan(case_root, "codex", role, context)
+            result = runtime.dispatch_capture(case_root, "codex", plan["plan_nonce"], "task-retired-primary", reserve["model_id"], "xhigh", context, "output-retired-primary", "review")
+        saved = runtime._read_local_case(case_root)
+        rows.append(("resilience-retirement-reserve-persisted-replay", plan["model_resolution"]["current_registry_sha256"] == retired_registry["registry_sha256"] and result["code"] == "DISPATCH_CAPTURED" and runtime._authority_dispatch_valid(saved["events"][-1], saved, role), "retirement-selected reserve preserves its exact eligibility snapshot after current package changes"))
+        plan = runtime.dispatch_plan(case_root, "codex", role, context)
+        before = (case_root / "case.json").read_bytes()
+        with patch.object(Path, "read_text", retired_catalog):
+            try:
+                runtime.dispatch_capture(case_root, "codex", plan["plan_nonce"], "task-package-changed", reserve["model_id"], "xhigh", context, "output-package-changed", "review")
+                changed_refused = False
+            except runtime.AuthoringError as exc:
+                changed_refused = exc.code == "DISPATCH_PLAN_STALE"
+        rows.append(("resilience-package-change-invalidates-unaffected-reserve-plan", changed_refused and (case_root / "case.json").read_bytes() == before, "any changed eligibility registry invalidates capture even when the selected reserve remains eligible"))
+        role_candidate = candidate_v3_registry()
+        role_primary = next(item for item in role_candidate["bindings"] if item["provider"] == "claude_code" and item["tier"] == role)
+        role_higher = next(item for item in role_candidate["bindings"] if item["provider"] == "claude_code" and item["tier"] == "ultimate_intelligence")
+        role_higher["selection"] = {"role": "primary", "priority": 0, "fallback_for": [role_primary["binding_id"]]}
+        role_higher["binding_sha256"] = digest({key: value for key, value in role_higher.items() if key != "binding_sha256"})
+        role_candidate["registry_sha256"] = digest({key: value for key, value in role_candidate.items() if key != "registry_sha256"})
+        proof_files, _ = fixture_module.fixture(registry_value=role_candidate, binding_ids=[item["binding_id"] for item in role_candidate["bindings"] if item["provider"] == "claude_code"], role_protocol=True)
+        role_root = root / "role-protocol-case"
+        with patch.object(runtime, "_pinned_artifact_material", fixture_material):
+            runtime.init_case(role_root, root, "case-role-protocol-resilience", "R1")
+        context = "context-role-protocol-fallback"
+        runtime.capture_capability(role_root, "claude_code", role_higher["model_id"], ["high"], context, None)
+        plan = runtime.dispatch_plan(role_root, "claude_code", role, context)
+        result = runtime.dispatch_capture(role_root, "claude_code", plan["plan_nonce"], "task-role-protocol-fallback", role_higher["model_id"], "high", context, "output-role-protocol-fallback", "review")
+        saved = runtime._read_local_case(role_root)
+        rows.append(("resilience-higher-tier-dispatch-capture-replay", result["code"] == "DISPATCH_CAPTURED" and plan["binding_id"] == role_higher["binding_id"] and runtime._authority_dispatch_valid(saved["events"][-1], saved, role), "cumulative role-protocol proof authorizes higher fallback through planning, capture and protected authority replay"))
+        rows.append(("resilience-higher-tier-notice-selected-cost", plan["user_notice"]["cost_class"] == runtime._NOTICE_COST_CLASS[role_higher["tier"]] and plan["user_notice"]["role"] == role, "notice retains requested responsibility while exposing qualified fallback model cost"))
+    return rows
+
+
+def test_promotion_runtime_contracts() -> list[tuple[str, bool, str]]:
+    """Synthetic structural proof enables tests only, never native qualification."""
+    rows: list[tuple[str, bool, str]] = []
+    spec = importlib.util.spec_from_file_location("agent_council_promotion_runtime", RUNTIME)
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    promotion = runtime._promotion_verifier()
+    fixture_spec = importlib.util.spec_from_file_location("agent_council_promotion_fixture_runtime", PACKAGE / "scripts/Test-AgentCouncilPromotion.py")
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixtures)
+    _, baseline, _ = runtime._pinned_artifact_material()
+
+    with tempfile.TemporaryDirectory(prefix="agent-council-public-promotion-") as temporary:
+        root = Path(temporary).resolve()
+        package = root / "public-package"
+        private_files, private_proof = fixtures.fixture(package, binding_ids=["claude-code-v3-ultimate"], registry_value=candidate_v3_registry())
+        closure = promotion.export_public_promotion_bytes(private_files,
+            expected_package_sha256=private_proof["promoted_release_binding"]["behavioral_identity"]["behavioral_sha256"],
+            expected_proof_sha256=promotion.sha256(private_files[promotion.PROOF_PATH]), candidate_root=package)
+        public_files = dict(baseline) | {name: private_files[name] for name in private_proof["promoted_release_binding"]["behavioral_identity"]["paths"]}
+        public_files[promotion.INVENTORY_PATH] = private_files[promotion.INVENTORY_PATH]
+        public_files.update(closure)
+        for name, raw in public_files.items():
+            target = package / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(raw)
+        with patch.object(runtime, "_PACKAGE", package):
+            case_root = root / "public-case"
+            runtime.init_case(case_root, root, "case-public-promotion", "R1")
+            state = json.loads((case_root / "case.json").read_text())
+            pins = state["policy_bundle"]["artifact_pins"]
+            private_only = set(private_files) - set(public_files)
+            rows.append(("v3-public-proof-creates-offline-case-without-private-evidence", not private_only.intersection(pins) and set(closure) <= set(pins), "public proof and candidate archive suffice; private transcripts and loader roots are absent"))
+            package.rename(root / "unavailable-installed-package")
+            runtime._require_case_promotion(state, case_root)
+            rows.append(("v3-public-pinned-proof-survives-unavailable-package", True, "public verification uses pinned package bytes after installed package removal"))
+
+    def rejects(call, code: str | None = None) -> bool:
+        try:
+            call()
+        except runtime.AuthoringError as exc:
+            return exc.code == code if code else exc.code.startswith("PROMOTION_")
+        return False
+
+    # Defense at the runtime boundary also refuses a legacy verifier success
+    # result when the frozen package declares the role qualification protocol.
+    legacy_files, legacy_proof = fixtures.fixture(binding_ids=["claude-code-v3-ultimate"], registry_value=candidate_v3_registry())
+    legacy_registry = json.loads(legacy_files[promotion.REGISTRY_PATH])
+    legacy_result = {"promoted_release_binding": legacy_proof["promoted_release_binding"],
+                     "promotion_proof_sha256": promotion.sha256(legacy_files[promotion.PROOF_PATH]),
+                     "qualification_protocol_version": None}
+    for label, declared_files, version in (
+        ("legacy-proof", list(promotion.protocol.PROTOCOL_FILES), None),
+        ("wrong-version", list(promotion.protocol.PROTOCOL_FILES), "agent-council.role-qualification/v0"),
+        ("partial-marker", [promotion.protocol.PROTOCOL_FILES[0]], promotion.ROLE_PROTOCOL),
+        ("missing-coverage", list(promotion.protocol.PROTOCOL_FILES), promotion.ROLE_PROTOCOL),
+    ):
+        declared = json.loads(json.dumps(legacy_result))
+        declared["promoted_release_binding"]["behavioral_identity"]["paths"].extend(declared_files)
+        declared["qualification_protocol_version"] = version
+        with patch.object(promotion, "verify_promotion_bytes", return_value=declared):
+            denied = rejects(lambda: runtime._verify_promotion_snapshot(legacy_registry, legacy_files, runtime._promotion_binding(declared), PACKAGE), "PROMOTION_ROLE_PROTOCOL_REQUIRED")
+        rows.append(("v3-runtime-protocol-downgrade-" + label + "-refused", denied, "a verifier success cannot grant runtime authority when frozen package protocol and qualified-role evidence disagree"))
+
+    with tempfile.TemporaryDirectory(prefix="agent-council-role-downgrade-") as temporary:
+        root = Path(temporary).resolve()
+        for label in ("private", "public"):
+            package = root / (label + "-package")
+            downgrade_files, downgrade_proof = fixtures.fixture(package, binding_ids=["claude-code-v3-ultimate"], include_protocol_package=True, registry_value=candidate_v3_registry())
+            if label == "public":
+                # Reproduce a proof emitted by the historical exporter before
+                # the package-driven protocol gate existed. Verification below
+                # is entirely real and runs after this fixture-only patch ends.
+                with patch.object(promotion, "required_protocol", return_value=None):
+                    downgrade_files.update(promotion.export_public_promotion_bytes(downgrade_files,
+                        expected_package_sha256=downgrade_proof["promoted_release_binding"]["behavioral_identity"]["behavioral_sha256"],
+                        expected_proof_sha256=promotion.sha256(downgrade_files[promotion.PROOF_PATH]), candidate_root=package))
+            for name, raw in (dict(baseline) | downgrade_files).items():
+                target = package / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(raw)
+            case_root = root / (label + "-case")
+            with patch.object(runtime, "_PACKAGE", package):
+                denied = rejects(lambda: runtime.init_case(case_root, root, "case-" + label + "-protocol-downgrade", "R1"))
+            rows.append(("v3-" + label + "-legacy-proof-over-role-package-refused", denied and not case_root.exists(), "self-consistent legacy proof over a role-protocol package cannot create runtime authority or publish a case"))
+
+    with tempfile.TemporaryDirectory(prefix="agent-council-promotion-runtime-") as temporary:
+        root = Path(temporary).resolve()
+        package = root / "package"
+        fixture_files, proof = fixtures.fixture(package, registry_value=candidate_v3_registry())
+        files = dict(baseline) | fixture_files
+        alias_document = write_case("resolver_default_effort", root / "legacy-version-alias")
+        alias_document["registry"]["registry_version"] = "v3"
+        alias_document["registry"]["registry_sha256"] = digest({key: value for key, value in alias_document["registry"].items() if key != "registry_sha256"})
+        alias_document["identity"].update(registry_version="v3", registry_sha256=alias_document["registry"]["registry_sha256"])
+        previous = None
+        for item in alias_document["events"]:
+            item["identity"] = dict(alias_document["identity"])
+            item["payload"]["previous_event_sha256"] = previous
+            item["event_sha256"] = digest({key: value for key, value in item.items() if key != "event_sha256"})
+            previous = item["event_sha256"]
+            path = Path(alias_document["case_root"]) / "events" / (item["event_id"] + ".json")
+            path.chmod(0o600); path.write_bytes(canonical(item) + b"\n"); path.chmod(0o400)
+        rows.append(("v3-version-label-cannot-alias-historical-schema", structural_refusal(runtime.evaluate_contract_case(alias_document), "SCHEMA_VALIDATION_FAILED"), "resealed imported v2 records cannot use the reserved v3 registry label to bypass promotion"))
+        for name, raw in files.items():
+            path = package / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(raw)
+        with patch.object(runtime, "_PACKAGE", package):
+            proof_path = package / promotion.PROOF_PATH
+            original_proof = proof_path.read_bytes()
+            proof_path.unlink()
+            refused_root = root / "self-declared"
+            rows.append(("v3-fresh-self-declared-qualification-refused", rejects(lambda: runtime.init_case(refused_root, root, "case-self-declared", "R1")) and not refused_root.exists(), "rehashed qualified registry cannot create a case without promotion proof"))
+            proof_path.write_bytes(original_proof)
+            registry_path = package / promotion.REGISTRY_PATH
+            registry_path.write_bytes(canonical(registry("historical")))
+            rows.append(("v3-fresh-historical-registry-substitution-refused", rejects(lambda: runtime.init_case(refused_root, root, "case-version-substitution", "R1"), "PINNED_ARTIFACT_MISSING") and not refused_root.exists(), "fresh v3 pin path cannot carry a historical registry"))
+            registry_path.write_bytes(files[promotion.REGISTRY_PATH])
+            case_root = root / "verified"
+            runtime.init_case(case_root, root, "case-promoted-runtime", "R1")
+            recovery_root = root / "promotion-recovery"
+            runtime.init_case(recovery_root, root, "case-promoted-recovery", "R1")
+            saved = runtime._read_local_case(case_root)
+            pins = saved["policy_bundle"]["artifact_pins"]
+            rows.append(("v3-qualified-case-pins-complete-promotion", set(fixture_files) <= set(pins) and saved["policy_bundle"]["promotion_binding"]["proof_sha256"] == promotion.sha256(original_proof), "case binds every synthetic promotion artifact and its exact proof"))
+            runtime.evidence_add(case_root, "evidence-escalation", "behavioral_test", behavioral_evidence(saved["engineering_candidate"], cycle_id=saved["cycle_id"]))
+            for role, kind in (("ultimate_intelligence", "routing"), ("technical_tactical_intelligence", "implementation")):
+                binding = next(item for item in saved["registry"]["bindings"] if item["provider"] == "codex" and item["tier"] == role)
+                effort = binding["reasoning"]["default_effort"]
+                context = "context-promotion-" + kind
+                runtime.capture_capability(case_root, "codex", binding["model_id"], list(binding["reasoning"]["allowed_efforts"]), context, None)
+                plan = runtime.dispatch_plan(case_root, "codex", role, context)
+                runtime.dispatch_capture(case_root, "codex", plan["plan_nonce"], "task-promotion-" + kind, binding["model_id"], effort, context, "output-promotion-" + kind, kind)
+            state = runtime._read_local_case(case_root)
+            document = runtime._authoring_document(state, case_root)
+            result = runtime.evaluate_contract_case(document)
+            rows.append(("v3-qualified-import-evaluates-pinned-proof", result.get("code") == "BINDING_EFFORT_RESOLVED", "imported evaluation verifies the same pinned promotion evidence; observed " + result.get("code", "missing")))
+            rows.append(("v3-qualified-bundle-builds", runtime.build_bundle(case_root)["code"] == "EXECUTING_BUNDLE_BUILT", "bundle creation verifies promotion before writing"))
+            # A valid escalation gate cannot authorize an unqualified effort.
+            runtime.gate_record(case_root, "ultimate-routing", "evidence-escalation", "complexity_escalation")
+            rows.append(("v3-evidenced-nondefault-effort-refused", rejects(lambda: runtime.dispatch_plan(case_root, "codex", "ultimate_intelligence", "context-promotion-routing", "ultra"), "EFFORT_POLICY_INVALID"), "default-only promotion never grants another supported effort"))
+            # The saved case consumes only its snapshot after package rotation.
+            (package / promotion.REGISTRY_PATH).write_bytes(b"later installed registry\n")
+            proof_path.write_bytes(b"later installed proof\n")
+            rotated = runtime.evaluate_contract_case(runtime._authoring_document(runtime._read_local_case(case_root), case_root))
+            rows.append(("v3-promotion-survives-installed-package-rotation", runtime.build_bundle(case_root)["code"] == "EXECUTING_BUNDLE_BUILT" and rotated.get("result") != "refused", "later installed evidence cannot replace or invalidate pinned bytes; observed " + rotated.get("code", "missing")))
+            implementation = next(item for item in runtime._read_local_case(case_root)["dispatch_plans"].values() if item["decision_kind"] == "implementation")
+            runtime.packet_result(case_root, implementation["packet_id"], "completed", [{"gate_id": "implementation", "status": "passed"}])
+            runtime.test_record(case_root, "test-normative", "evidence-escalation", "passed")
+            for role, kind in (("operational_intelligence", "review"), ("ultimate_intelligence", "final")):
+                binding = next(item for item in saved["registry"]["bindings"] if item["provider"] == "codex" and item["tier"] == role)
+                effort = binding["reasoning"]["default_effort"]
+                context = "context-promotion-" + kind
+                runtime.capture_capability(case_root, "codex", binding["model_id"], [effort], context, None)
+                plan = runtime.dispatch_plan(case_root, "codex", role, context, decision_kind=kind)
+                runtime.dispatch_capture(case_root, "codex", plan["plan_nonce"], "task-promotion-" + kind, binding["model_id"], effort, context, "output-promotion-" + kind, kind)
+            for gate_id in ROUTE_GATES["R1"][1:]:
+                runtime.gate_record(case_root, gate_id, "evidence-escalation")
+            pinned_proof = case_root / "pinned" / promotion.PROOF_PATH
+            pinned_proof.chmod(0o600); pinned_proof.write_bytes(original_proof + b" ")
+            before_close = (case_root / "case.json").read_bytes()
+            before_events = sorted(path.name for path in (case_root / "events").iterdir())
+            rows.append(("v3-close-tampered-promotion-atomic", rejects(lambda: runtime.close_local_case(case_root)) and (case_root / "case.json").read_bytes() == before_close and sorted(path.name for path in (case_root / "events").iterdir()) == before_events, "invalid pinned promotion refuses closure without publishing any event or state"))
+            pinned_proof.write_bytes(original_proof); pinned_proof.chmod(0o400)
+            try:
+                closed = runtime.close_local_case(case_root)
+            except runtime.AuthoringError as exc:
+                closed = {"code": exc.code}
+            rows.append(("v3-complete-case-closes-after-package-rotation", closed.get("code") == "CASE_CLOSED", "closure dry-run uses verified pinned promotion bytes; observed " + closed.get("code", "missing")))
+            closed_state = runtime._read_local_case(case_root)
+            evaluated_closed = runtime.evaluate_contract_case(runtime._authoring_document(closed_state, case_root))
+            rows.append(("v3-closed-case-retains-verifiable-promotion", closed.get("code") == "CASE_CLOSED" and evaluated_closed.get("code") == "CASE_ACCEPTED" and sum(event["record_type"] == "closure" for event in closed_state["events"]) == 1 and not (case_root / runtime._PENDING_JOURNAL).exists(), "one durable closure remains evaluable against the original pinned promotion"))
+
+        recovery_state = runtime._read_local_case(recovery_root)
+        recovery_before = (recovery_root / "case.json").read_bytes()
+        fault_code, _, fault_stderr = cli_fault("journal", "evidence-add", "--case-root", str(recovery_root), "--evidence-id", "evidence-recovery", "--evidence-kind", "behavioral_test", "--content-json", json.dumps(behavioral_evidence(recovery_state["engineering_candidate"], cycle_id=recovery_state["cycle_id"])))
+        journal_path = recovery_root / runtime._PENDING_JOURNAL
+        original_journal = journal_path.read_bytes()
+        damaged_journal = json.loads(original_journal)
+        proposed = json.loads(base64.b64decode(damaged_journal["state"]["bytes_b64"]))
+        proposed["policy_bundle"].pop("promotion_binding")
+        proposed_bytes = canonical(proposed) + b"\n"
+        damaged_journal["state"].update(sha256=hashlib.sha256(proposed_bytes).hexdigest(), bytes_b64=base64.b64encode(proposed_bytes).decode("ascii"))
+        journal_path.write_bytes(canonical(damaged_journal) + b"\n")
+        recovery_inventory = filesystem_inventory(recovery_root)
+        recover_code, recover_result, recover_stderr = cli_detail("recover-case", "--case-root", str(recovery_root))
+        recovery_preserved = filesystem_inventory(recovery_root) == recovery_inventory and (recovery_root / "case.json").read_bytes() == recovery_before
+        rows.append(("v3-recovery-invalid-promotion-refused-before-publication", fault_code != 0 and "Traceback" not in fault_stderr and recover_code != 0 and structural_refusal(recover_result, "PROMOTION_EVIDENCE_REQUIRED") and "Traceback" not in recover_stderr and recovery_preserved, "rehashed pending state without promotion cannot publish targets, replace state, or remove its journal"))
+        retry_succeeded = False
+        if recovery_preserved:
+            journal_path.write_bytes(original_journal)
+            retry_code, retry_result, retry_stderr = cli_detail("recover-case", "--case-root", str(recovery_root))
+            retry_succeeded = retry_code == 0 and retry_result.get("code") == "CASE_RECOVERED" and "Traceback" not in retry_stderr and not journal_path.exists() and (recovery_root / "case.json").read_bytes() == base64.b64decode(json.loads(original_journal)["state"]["bytes_b64"])
+        rows.append(("v3-recovery-valid-promotion-retry-publishes", retry_succeeded, "restoring the exact qualified transaction allows normal durable recovery"))
+
+        state_path = case_root / "case.json"
+        saved_bytes = state_path.read_bytes()
+        state = json.loads(saved_bytes)
+        def alter_state(value: dict[str, Any]) -> None:
+            state_path.chmod(0o600)
+            state_path.write_bytes(canonical(value) + b"\n")
+        for label, mutate in (
+            ("missing-binding", lambda value: value["policy_bundle"].pop("promotion_binding")),
+            ("missing-artifact-pins", lambda value: value["policy_bundle"].pop("artifact_pins")),
+            ("changed-package-pin", lambda value: value["policy_bundle"]["promotion_binding"].update(package_sha256="0" * 64)),
+            ("changed-proof-pin", lambda value: value["policy_bundle"]["promotion_binding"].update(proof_sha256="0" * 64)),
+            ("unsafe-artifact-path", lambda value: value["policy_bundle"]["artifact_pins"].update({"../escaped": "0" * 64})),
+        ):
+            damaged = json.loads(saved_bytes); mutate(damaged); alter_state(damaged)
+            before = state_path.read_bytes()
+            expected_code = "SCHEMA_VALIDATION_FAILED" if label == "missing-artifact-pins" else None
+            rows.append(("v3-dispatch-" + label + "-refused", rejects(lambda: runtime.dispatch_plan(case_root, "codex", "ultimate_intelligence", "context-promotion-routing"), expected_code) and state_path.read_bytes() == before, "invalid promotion cannot mutate dispatch state"))
+            imported = dict(document, policy_bundle=damaged["policy_bundle"])
+            rows.append(("v3-import-" + label + "-refused", runtime.evaluate_contract_case(imported).get("result") == "refused", "imported qualified registry must carry valid pinned promotion"))
+            alter_state(state)
+
+        # Even internally consistent alternate registry hashes must match proof.
+        damaged = json.loads(saved_bytes)
+        changed = next(item for item in damaged["registry"]["bindings"] if item["tier"] == "worker_intelligence")
+        changed["qualified_roles"] = ["worker_intelligence", "operational_intelligence"]
+        changed["binding_sha256"] = digest({key: value for key, value in changed.items() if key != "binding_sha256"})
+        damaged["registry"]["registry_sha256"] = digest({key: value for key, value in damaged["registry"].items() if key != "registry_sha256"})
+        alter_state(damaged)
+        rows.append(("v3-resealed-role-coverage-forgery-refused", rejects(lambda: runtime.dispatch_plan(case_root, "codex", "ultimate_intelligence", "context-promotion-routing"), "PROMOTION_REGISTRY_MISMATCH"), "declaring requested-role coverage and recomputing hashes cannot bypass the pinned qualification proof"))
+        damaged = json.loads(saved_bytes)
+        damaged["registry"]["bindings"][0]["model_id"] = "unqualified-model"
+        changed = damaged["registry"]["bindings"][0]
+        changed["binding_sha256"] = digest({key: value for key, value in changed.items() if key != "binding_sha256"})
+        damaged["registry"]["registry_sha256"] = digest({key: value for key, value in damaged["registry"].items() if key != "registry_sha256"})
+        alter_state(damaged)
+        rows.append(("v3-resealed-registry-substitution-refused", rejects(lambda: runtime.build_bundle(case_root), "PROMOTION_REGISTRY_MISMATCH"), "case registry must equal the exact verified promoted registry"))
+        damaged["registry"] = registry("historical")
+        alter_state(damaged)
+        rows.append(("v3-pinned-registry-version-downgrade-refused", rejects(lambda: runtime.build_bundle(case_root), "PROMOTION_REGISTRY_MISMATCH"), "v3 case cannot evade promotion through historical registry substitution"))
+        alter_state(state)
+
+        artifact = case_root / "pinned" / proof["binding_evidence"][0]["runs"][0]["transcript"]["path"]
+        raw = artifact.read_bytes()
+        artifact.chmod(0o600); artifact.write_bytes(raw + b"{}\n")
+        rows.append(("v3-pinned-transcript-tamper-refused", rejects(lambda: runtime.build_bundle(case_root)), "pinned transcript hash is checked on every authority boundary"))
+        artifact.write_bytes(raw)
+        alias = root / "external-transcript.jsonl"; alias.write_bytes(raw)
+        artifact.unlink(); artifact.symlink_to(alias)
+        rows.append(("v3-pinned-symlink-refused", rejects(lambda: runtime.build_bundle(case_root)), "equal bytes through a symlink remain unsafe"))
+        artifact.unlink(); os.link(alias, artifact)
+        second = case_root / "pinned" / proof["binding_evidence"][0]["runs"][1]["transcript"]["path"]
+        second.unlink(); os.link(alias, second)
+        rows.append(("v3-pinned-file-alias-refused", rejects(lambda: runtime.build_bundle(case_root)), "aliased evidence files cannot satisfy distinct references"))
+    return rows
+
+
 def run(group: str) -> dict[str, Any]:
     if group not in GROUPS: raise ValueError(f"Unknown group: {group}")
     if group == "schema": rows = test_schema()
+    elif group == "registry-schema": rows = test_registry_role_schema()
     elif group == "authoring": rows = test_authoring(group)
-    elif group == "dispatch-contracts": rows = test_dispatch_contracts()
+    elif group == "dispatch-contracts": rows = test_dispatch_contracts() + test_binding_effort_contracts() + test_model_resilience_contracts() + test_promotion_runtime_contracts()
     else: rows = runtime_red_cases(group)
     passed = sum(ok for _, ok, _ in rows)
     return {"group": group, "result": "passed" if passed == len(rows) else "failed", "observed": {"total": len(rows), "passed": passed, "failed": len(rows) - passed}, "assertions": [{"name": name, "passed": ok, "expectation": expectation} for name, ok, expectation in rows]}

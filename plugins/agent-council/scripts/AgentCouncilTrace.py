@@ -29,7 +29,7 @@ ENUMS = {
     "outcome": {"direct_execution", "lightweight_routing", "governed_r1", "governed_r2", "governed_r3", "skipped", "blocked", "unknown"},
     "evidence_source": {"hook_observed", "agent_reported"},
     "requested_role": {"orchestrator", "investigator", "builder", "reviewer", "arbiter", "ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence"},
-    "requested_model": {"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"},
+    "requested_model": {"gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"},
     "requested_effort": {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
 }
 ENUMS["observed_model"] = ENUMS["requested_model"]
@@ -217,6 +217,9 @@ def append_record(record, environ):
             return "unavailable"
         # A single append is made while holding the file lock. No pruning or rotation.
         if os.write(fd, data) != len(data):
+            # Restore the locked pre-append boundary so a short write cannot
+            # poison every later append with an incomplete JSONL record.
+            os.ftruncate(fd, size)
             return "unavailable"
         return "recorded"
     except (OSError, ValueError, TypeError, OverflowError):
@@ -261,7 +264,12 @@ def inspect_trace(environ):
         size = os.fstat(fd).st_size
         data = os.read(fd, MAX_BYTES + 1)
         report['state'] = 'quota' if size > MAX_BYTES - MAX_RECORD or data.count(b'\n') >= MAX_RECORDS else 'available'
-        for line in data.splitlines()[:MAX_RECORDS]:
+        lines = data.splitlines()
+        if data and len(data) == size and not data.endswith(b'\n'):
+            report['state'] = 'unavailable'
+            report['unknown_records'] += 1
+            lines = lines[:-1]
+        for line in lines[:MAX_RECORDS]:
             try:
                 if len(line) > MAX_RECORD:
                     raise ValueError('oversized record')

@@ -15,6 +15,7 @@ class ProgressiveDisclosure(unittest.TestCase):
         text = (SKILL / "SKILL.md").read_text()
         self.assertLessEqual(len(text.encode()), 6500, "entry must reduce the old 13038-byte payload by at least half")
         for boundary in (
+            "Run before any non-trivial", "council_reentry: denied",
             "council_reentry: denied", "Diagnosis authorizes diagnosis only",
             "Explicit invocation guarantees the applicability check",
             "user scope, authority, and reentry; qualifying risk; then economics",
@@ -25,15 +26,16 @@ class ProgressiveDisclosure(unittest.TestCase):
             "safety-boundary", "acceptance-gate", "repeated unresolved failure",
             "unqualified capability composition", "Council qualification failure",
             "Read-only architecture assessment", "expected refusals",
-            "known-cause, reversible ordinary local repair", "Reassess only when material evidence changes",
+            "known-cause, reversible ordinary local repair", "Reassess only when evidence changes",
+            "asked for independent assessment", "delegate one bounded assessment",
             "domain skill", "optional", "missing or unreadable",
         ):
             self.assertIn(boundary, text)
 
     def test_routes_load_only_their_own_instructions(self):
         text = (SKILL / "SKILL.md").read_text()
-        self.assertIn("Direct: read no Council reference", text)
-        self.assertIn("Lightweight: read only references/lightweight-routing.yaml", text)
+        self.assertIn("Direct: after the conditional profile check, read no further Council reference", text)
+        self.assertIn("Lightweight: after the conditional profile check, read only references/lightweight-routing.yaml", text)
         self.assertIn("Governed: read references/governed-workflow.yaml", text)
         self.assertIn("block the affected work", text)
         self.assertNotIn("references/model-adapters.yaml", text)
@@ -41,6 +43,32 @@ class ProgressiveDisclosure(unittest.TestCase):
         self.assertNotIn("Invoke-AgentCouncil.py", text)
         for path in re.findall(r"references/[a-z-]+\.yaml", text):
             self.assertTrue((SKILL / path).is_file(), path)
+
+    def test_project_floors_precede_otherwise_direct_or_lightweight_routes(self):
+        # This checks the instruction contract, not native model compliance.
+        text = (SKILL / "SKILL.md").read_text()
+        profile_check = text.split("profile_check:\n", 1)[1].split("\nrisk:", 1)[0]
+        self.assertLess(text.index("authority:"), text.index("profile_check:"))
+        self.assertLess(text.index("profile_check:"), text.index("economics:"))
+        self.assertIn("before final route selection", profile_check)
+        self.assertIn("repository .agent-council/profile.yaml", profile_check)
+        self.assertIn("explicitly selected packaged profile", profile_check)
+        self.assertIn("read references/project-profiles.yaml and the selected profile", profile_check)
+        for provisional_route in ("direct", "lightweight"):
+            with self.subTest(otherwise=provisional_route):
+                self.assertIn("apply its route floors even when the built-in rules would choose direct or lightweight", profile_check)
+                self.assertIn("Profiles may raise risk floors or add gates, never lower them or expand authority", profile_check)
+                self.assertIn("after the conditional profile check", text.split(provisional_route.capitalize() + ":", 1)[1].split("\n", 1)[0])
+        self.assertIn("Hold the affected route", profile_check)
+        self.assertIn("missing or unreadable selected profiles", profile_check)
+        self.assertIn("unknown relevant semantics", profile_check)
+
+    def test_absent_profile_preserves_progressive_loading(self):
+        text = (SKILL / "SKILL.md").read_text()
+        profile_check = text.split("profile_check:\n", 1)[1].split("\nrisk:", 1)[0]
+        self.assertIn("With neither profile present, skip this reference until governed case initialization", profile_check)
+        self.assertIn("do not load unrelated governed references", profile_check)
+        self.assertEqual(re.findall(r"references/[a-z-]+\.yaml", profile_check), ["references/project-profiles.yaml"])
 
     def test_lightweight_is_self_contained(self):
         text = (SKILL / "references/lightweight-routing.yaml").read_text()
@@ -54,6 +82,7 @@ class ProgressiveDisclosure(unittest.TestCase):
             "minimal", "medium", "same-tier fallback", "next higher qualified tier",
             "Council: <model>/<effort>", "compact conversational receipt",
             "Do not create a durable lightweight log", "actual observed model and effort",
+            "Include council_reentry: denied in every worker prompt",
             "versioned registry", "native", "user model or effort preference",
         ):
             self.assertIn(boundary, text)

@@ -19,6 +19,31 @@ fixture_layout_red:
   repair: 'place fixture inside its owning case directory'
 release:
   status: 'not run; integration owns full native qualification after candidate freeze'
+current_protocol:
+  status: 'role protocol implementation in progress; fresh native evidence pending'
+  qualification: 'Frozen binding determines universal safety and cumulative role cases; each assertion must pass in both new runs plus the independent native probe.'
+  release_gate: 'All eight default v3 bindings must be verified before full release evaluation.'
+  public_proof: 'Allowlisted derived outcomes and hashes only; no prompts, responses, rationales, local paths, transcripts, or logs.'
+  historical_scope: 'The dated observations in this file predate the role protocol and do not qualify the current candidate.'
+controller_coverage:
+  GFT08:
+    owner: 'Outer controller: routing ownership, domain method ownership, exact receipt reuse.'
+    role_protocol: 'ULT03: ownership, current-candidate receipt selection, and external-action authority.'
+    structural: 'scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py::test_dispatch_contracts'
+    native_cases: [domain-skill-coexistence, ce-absence-native-method]
+    limit: 'Native cases observe the packaged domain fixture and absent-CE behavior. They do not qualify installed Compound Engineering execution or full native receipt reuse.'
+  GFT09:
+    owner: 'Outer controller: ordinary-operation exclusion and unchanged authorization.'
+    role_protocol: 'ULT04: ordinary read-only work does not require a full Council or authorize external publication.'
+    structural: 'scripts/Test-RoutingPolicyPacketD.py::routine-deterministic-check'
+    native_cases: [trivial-negative, diagnosis-only-authority]
+    limit: 'Native cases observe direct arithmetic without delegation and diagnosis-only authority. They do not prove every routine-operation exclusion.'
+  GFT12:
+    owner: 'Outer controller: packaged default profile and isolation from unrelated project rules.'
+    role_protocol: 'ULT05: supplied profile-selection semantics and rejection of unrelated push approval, not observed file isolation.'
+    structural: 'scripts/Test-AgentCouncilPlugin.py::unrelated-local-profile-is-ignored'
+    native_cases: []
+    limit: 'The isolated native suite does not inject a conflicting project profile. Profile selection and external-authority non-inheritance have structural coverage only.'
 coexistence_smoke:
   command: 'python3 plugins/agent-council/scripts/NativePluginEvals.py iterate --case domain-skill-coexistence'
   result: 'score 1.00; actual Council and domain Skill events in order; no mutation tool calls'

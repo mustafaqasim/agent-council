@@ -6,7 +6,7 @@ boundary:
   - "When excluding routine deterministic work from a governed case, record the ordinary-operation exclusion where required and preserve existing authorization."
 supporting_references:
   base: "All references below are relative to the skill directory, not this reference directory. Read only those whose stated condition applies."
-  profiles: "Before case initialization, read references/project-profiles.yaml. Select and state one explicit effective profile: repository .agent-council/profile.yaml, an explicitly selected packaged profile, or profiles/default.yaml when none is present."
+  profiles: "Before case initialization, read references/project-profiles.yaml. Select and state one explicit effective profile: repository .agent-council/profile.yaml, an explicitly selected packaged profile, or ../../profiles/default.yaml relative to the skill directory when none is present."
   dispatch: "Before model dispatch or availability decisions, read references/model-adapters.yaml and resolve active qualified bindings through the versioned registry."
   review: "Before review, read references/review-lenses.yaml."
   qualification: "Before qualification or behavioral validation, read references/forward-tests.yaml."

@@ -32,9 +32,17 @@
       "type": "regex",
       "name": "r3-route",
       "target": "last_message",
-      "pattern": "governed case R3|\\bR3\\b",
+      "pattern": "governed case R3\\b|(?:^|[.!?;\\n])\\s*(?:the\\s+)?(?:governance\\s+)?route\\s*(?:is|:)\\s*R3\\b",
       "flags": "i",
       "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-contradictory-route",
+      "target": "last_message",
+      "pattern": "Council check:\\s*(?:direct execution|lightweight routing|governed case R[12])|(?:^|[.!?;\\n])\\s*(?:the\\s+)?(?:selected\\s+|governance\\s+)?route\\s*(?:is|:)\\s*(?:R[12]\\b|direct|lightweight)|(?:^|[.!?;\\n])\\s*(?:no\\s+(?:ultimate\\s+)?(?:design\\s+)?review|no\\s+integration|no\\s+fault)\\s+(?:evidence\\s+)?(?:is\\s+)?(?:required|needed)",
+      "flags": "i",
+      "match": "not_contains"
     },
     {
       "type": "regex",

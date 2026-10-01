@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "skills" / "agent-council" / "references" / "routing-policy-packet-d-fixtures.json"
 SKILL = ROOT / "skills" / "agent-council" / "SKILL.md"
 ADAPTERS = ROOT / "skills" / "agent-council" / "references" / "model-adapters.yaml"
+LIGHTWEIGHT = ROOT / "skills/agent-council/references/lightweight-routing.yaml"
 
 RISK_ROUTES = {
     "asserted_automation_repair": "R1",
@@ -53,7 +54,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    before = {path: path.stat().st_mtime_ns for path in (FIXTURES, SKILL, ADAPTERS)}
+    before = {path: path.stat().st_mtime_ns for path in (FIXTURES, SKILL, ADAPTERS, LIGHTWEIGHT)}
     fixtures = json.loads(FIXTURES.read_text(encoding="utf-8"))
     require(fixtures["schema_version"] == "agent-council.routing-policy-fixtures/v1", "fixture schema mismatch")
     for scenario in fixtures["scenarios"]:
@@ -66,17 +67,17 @@ def main() -> int:
         "Apply this fixed precedence: user scope, authority, and reentry; qualifying risk; then economics.",
         "A risk trigger overrides task size",
         "known-cause, reversible ordinary local repair",
-        "Known cause, reversibility, and line count do not defeat a qualifying trigger",
+        "Cause, reversibility, and size never defeat a qualifying trigger",
         "Read-only architecture assessment",
-        "Implementing an architecture change is R3.",
+        "Implementing architecture changes is R3.",
         "Diagnosis authorizes diagnosis only",
         "ordinary failure is a failed expected behavior",
         "qualification failure concerns whether a model, binding, capability, or evidence gate is qualified",
-        "Reassess only when material evidence changes",
-        "compact conversational receipt",
-        "Do not create a durable lightweight log, receipt, case, dispatch plan, or invented savings.",
+        "Reassess only when evidence changes",
     )
     require(all(item in skill for item in required_skill), "skill omits a Packet D routing boundary")
+    lightweight = LIGHTWEIGHT.read_text(encoding="utf-8")
+    require(all(item in lightweight for item in ("compact conversational receipt", "Do not create a durable lightweight log, receipt, case, dispatch plan, or invented savings.")), "lightweight route omits receipt boundaries")
     required_adapters = (
         "routing_precedence:",
         "lightweight_effort_and_fanout:",

@@ -103,6 +103,8 @@ def main() -> int:
                                    env={"PATH": os.environ.get("PATH", ""), "PLUGIN_ROOT": str(ROOT), "PLUGIN_DATA": str(data_dir)}, check=False)
         require(diagnosis.returncode == 0, f"diagnostic failed: {diagnosis.stderr}")
         payload = json.loads(diagnosis.stdout)
+        require(payload["package"]["portable_manifest"]["version"] == "0.9.0", "portable metadata missing from diagnostic")
+        require(payload["package"]["current_identity"]["status"] == "observed" and payload["package"]["current_identity"]["qualification"] == "not_established_by_diagnostic", "diagnostic current identity is missing or overclaims qualification")
         require(payload["guarantees"] == {"files_created": False, "install_commands_run": False, "locks_created": False, "network_used": False, "read_only": True}, "diagnostic mutation guarantees are incomplete")
         require(payload["trust"]["status"] == payload["actual_agent_compliance"]["status"] == "unknown", "diagnostic overstates trust or compliance")
         require(payload["decision_trace"]["state"] == "disabled", "trace must be disabled without explicit opt-in")

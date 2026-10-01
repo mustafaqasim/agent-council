@@ -2,11 +2,19 @@ schema_version: "agent-council.model-adapters/v1"
 purpose: "Platform-specific dispatch rules for registry-bound, project-neutral capability tiers."
 
 registry:
-  artifact: "standards/agent-model-registry.v2.yaml"
-  designation_receipt: "standards/model-qualifications/initial-codex-designation.v2.yaml"
+  artifact: "standards/agent-model-registry.v3.yaml"
+  historical_artifact: "standards/agent-model-registry.v2.yaml"
+  historical_designation_receipt: "standards/model-qualifications/initial-codex-designation.v2.yaml"
+  qualification_plan: "standards/model-qualifications/provider-catalog-refresh.v3.yaml"
   rules:
-    - "Resolve a tier to an active registry binding only after a fast runtime availability and compatibility check."
+    - "For new selections use the v3 artifact. For an existing governed case resolve the version and SHA-256 pinned by that case, including the historical v2 artifact; never silently migrate or use v2 to bypass unqualified v3 candidates. Paths here are relative to the plugin root."
+    - "Resolve a tier only to a qualified active binding in a qualified or partially qualified provider, after a fast runtime availability and compatibility check. Catalog inclusion, a qualification plan, and historical v2 receipts do not qualify a v3 model and effort combination."
+    - "In v3, choose a qualified available primary first, then an ordered same-tier reserve. A higher-tier substitution is allowed only when that binding explicitly names the requested primary in selection.fallback_for. Record requested and selected tiers, requested effort, chosen binding, fallback kind, and the exact fresh capability receipt in the immutable dispatch plan."
+    - "Use a capability observation with an explicit time-zone offset from the same provider and context. Reject observations older than 24 hours or more than five minutes in the future. Recheck at planning and capture; a changed capability receipt invalidates an unconsumed plan."
+    - "Retired, revoked, hard-expired, and candidate bindings cannot be selected. A current package retirement of the exact same binding excludes it before reserve selection without rewriting a historical case. Pin the current eligibility registry snapshot in each v3 plan; if it changes before capture, discard the plan and resolve again. A model absent from the current catalog is not proof of retirement."
+    - "A provider may be partially qualified in v3. Only individually qualified bindings are eligible; provider status does not confer qualification on other rows."
     - "For a governed case, pin registry version and registry SHA-256 for the active case cycle."
+    - "A cycle change does not rebind a registry. To use new package pins, create a linked successor case with Migrate-AgentCouncilCase.py. It carries no approvals, tests, capability receipts, dispatch plans, or closure authority."
     - "For a governed case, pin binding ID and binding SHA-256 for every dispatch."
     - "A registry review-due date warns only. Explicit hard expiry or revocation blocks a binding."
     - "Unknown or new models are candidates only and cannot receive a tier gate before qualification and plugin update."
@@ -32,7 +40,7 @@ common:
     - "Honor an explicit user model or effort preference when it is compatible with the selected qualified binding, route, and native tool support. A preference never lowers a qualification floor or grants unavailable authority."
     - "When the preferred binding is unavailable, use an active same-tier fallback first. Use the next higher qualified tier only when the expected benefit still exceeds its cost; otherwise report the limitation and continue by direct execution."
     - "Never substitute a lower tier that is unlikely to complete the task reliably."
-    - "Show the user notice, then use the platform's native delegation tool with the explicit registry model ID and effort."
+    - "Show the user notice, then use the platform's native delegation tool with the explicit registry model ID and effort resolved under effort_selection. Omit the effort argument only for unsupported effort represented by null."
     - "Keep the returned task identity, model, context, disposition, and evidence visible in the active transcript."
     - "Do not create a Council case, immutable dispatch plan, or durable Council receipt solely for lightweight routing."
     - "End the active conversation with a compact receipt of actual observed model and effort, outcome, evidence, and limitations. State no delegation when none occurred. Do not persist a lightweight log or claim savings that were not observed."
@@ -42,8 +50,14 @@ common:
     - "Evaluate qualifying risk before economics. A risk trigger overrides task size and projected delegation benefit; choose the highest applicable R1, R2, or R3 route."
     - "When no qualifying risk applies, choose direct execution or lightweight routing by observable net benefit after coordination cost."
     - "Reassess only on material evidence changing scope, authority, cause, contract, safety, acceptance, qualification, or repeated-failure facts."
+  effort_selection:
+    - "For v3, use the selected binding's reasoning.default_effort by default. A compatible explicit user effort preference may override it only when included in reasoning.allowed_efforts, supported by the native tool, and qualified for the requested model and effort combination. An allowlist alone is not qualification evidence."
+    - "When reasoning.supported is false, require default_effort: null and allowed_efforts: []; record selected and observed effort as null with explicit native evidence of unsupported effort, and omit the native effort argument entirely. Never send null, none, high, or another synthetic effort argument."
+    - "When reasoning.supported is true, require a non-null allowed effort and native support for selecting it. If the native tool cannot express or establish that effort, record the binding unavailable and apply the applicable fallback rule; omission must not silently select an unknown default."
+    - "For a case pinned to v2, preserve that registry's reasoning.default_effort and historical model, effort, and qualification semantics. Do not inject v3 per-binding defaults or reinterpret historical receipts as v3 evidence."
+    - "If an explicit preference is incompatible, report the limitation and use only a qualified compatible selection under the fallback rule. Display unsupported effort as 'unsupported (null)' in the notice; retain null in structured evidence and never claim unobserved effort."
   lightweight_effort_and_fanout:
-    - "Use minimal or low effort for mechanical, extraction, formatting, and deterministic bounded work; medium for bounded implementation, structured analysis, and drafting; high only for difficult bounded judgment."
+    - "Start with the selected binding's qualified default effort under effort_selection; task shape does not replace catalog defaults with a global effort heuristic."
     - "Use the smallest useful independent fanout. Escalate one tier or effort step only when returned evidence shows insufficiency, material task expansion, or an in-scope qualifying risk trigger."
   governed_case_required_receipt:
     - "case_id, cycle_id, packet_id, policy_sha256, registry_version, registry_sha256, and prompt_sha256"
@@ -52,6 +66,8 @@ common:
     - "attested agent identity, context lineage, native invocation or trusted adapter reference, and output references"
   assurance:
     explicit_tool_selection: "A native tool accepted an explicit supported model argument."
+    client_configuration: "Native session fields record configured model and effort; legacy configuration receipts are not promotion eligible."
+    host_selected: "Explicit Codex native selection is checked against local session-store exports and replayed for structural consistency. Approved lower-assurance promotion does not establish provider identity or host authenticity."
     provider_attested: "The provider returned the resolved model identity."
     unverified: "A prompt role, prompt model name, or self-description only."
   rules:
@@ -68,32 +84,50 @@ common:
 
 codex:
   mechanism: "Use native collaboration spawn, message, follow-up, and wait APIs for internal council work."
+  qualification:
+    status: "The host-selected path is implemented; current v3 candidates still require fresh native evidence and verified promotion before ordinary delegation."
+    assurance: "host_selected, structural_only, provider_authenticity_verified: false; distinct from Claude provider-attested identity and legacy non-promotional client_configuration receipts"
+    evidence: "Two fresh candidate-bound native runs and a third independent native probe, with explicit exact model and effort, retained parent and child exports, preparations, prompts, passing receipts, and a validated pair."
+    collector: "CodexQualificationHarness.py score --host-selected checks retained exports against the local Codex session store. validate-pair replays both runs; AgentCouncilPromotion.py replays the archived pair and probe against the frozen candidate."
+    limits: "Hashes and native linkage prove structural consistency, not provider or host authenticity. Fresh tasks retain inherited platform and user instructions; complete context blindness and tool sandboxing are not claimed. Implementation or synthetic tests alone qualify no binding."
   procedure:
     - "Inspect the callable tool's supported model identifiers before dispatch."
-    - "Resolve the requested tier through the active registry binding and record its designation receipt."
-    - "Pass the explicit registry model ID and requested reasoning setting when the native tool supports them."
+    - "Resolve the requested tier through the selected version's qualified active registry binding and record its applicable qualification evidence."
+    - "Pass the explicit registry model ID and reasoning setting resolved under effort_selection. Omit reasoning_effort for unsupported effort; otherwise require native support for the selected value."
     - "Record the returned agent identity, context lineage, and native invocation reference."
     - "Use collaboration subtasks, never user-owned desktop tasks, for council internals."
   prohibition: "A model name in the worker prompt is not a model-selection receipt."
 
 claude_code:
-  mechanism: "Use the Agent tool for ordinary in-session delegation only when its accepted alias is observed resolving to the exact registry model ID. Use fresh interactive Claude Code sessions with an exact full model ID for native qualification."
-  status: "Qualified only for active v2 bindings. Opus 5.5 is the qualified operational binding after two clean blind native runs."
+  mechanism: "For v3, use a plugin-scoped Agent subagent whose definition pins the full registry model ID and supported effort. Use fresh interactive Claude Code sessions with an exact full model ID for native forward-test qualification."
+  status: "Qualification is specific to the selected registry, binding, model, and effort. Historical v2 bindings retain their recorded qualification; v3 candidates remain unavailable for ordinary delegation until qualification and promotion are evidenced."
   assurance:
-    ordinary_agent: "provider_attested exact identity after alias selection"
+    ordinary_agent: "provider_attested exact model and effort after plugin subagent selection"
     native_qualification: "explicit full-model selection plus provider-attested transcript identity"
-  delegation_tool: "Agent tool with a supported alias plus provider-observed exact identity for ordinary delegation; interactive Claude Code CLI with --model <full-model-id> for native qualification"
+  delegation_tool: "Agent tool with the exact plugin-scoped subagent type for v3 delegation; interactive Claude Code CLI with --model <full-model-id> for native forward-test qualification"
   procedure:
-    - "Resolve the requested tier through the active registry binding."
-    - "Inspect the Agent tool's supported model identifiers before dispatch."
-    - "Never pass a full registry model ID to an Agent tool whose schema accepts aliases only. An alias is not versioned model-selection evidence."
-    - "Use an Agent alias only when the returned provider identity resolves to the exact active registry model ID; otherwise record the binding unavailable and apply the normal fallback rule."
+    - "Resolve the requested tier through the selected version's qualified active registry binding, then resolve effort under effort_selection."
+    - "For v3, inspect the loaded plugin subagent definition and select its scoped Agent type only when its full model ID and effort exactly match the qualified registry binding. Do not use an alias-only selection as versioned model evidence."
+    - "Canonical Claude v3 bindings use council-ultimate, council-operational, council-technical, and council-worker Agent definitions. A reserve or other noncanonical Claude binding uses agents/<binding_id>.md and subagent type agent-council:<binding_id>; its definition must be in the frozen behavioral inventory and must pin that binding's exact model and effort."
+    - "Do not override the pinned model with a different per-invocation model. Provider allowlists and forced subagent-model settings can substitute a model; observe the actual model and effort in the native task record and refuse a mismatch."
+    - "Require a native mechanism that selects and establishes the resolved supported effort. When effort is unsupported, omit the agent effort field and every effort argument, and require explicit capability evidence for null; for native qualification omit --effort only in that unsupported case."
+    - "For a case pinned to v2, retain its historical binding and effort semantics. If an alias is used, require provider-observed exact model and effort before accepting dispatch; otherwise record the binding unavailable."
     - "Record the returned subagent output reference, task identity, and context identity."
     - "Use clean, self-contained subagent contexts for independent review and forward tests."
     - "For native qualification, use scripts/ClaudeQualificationHarness.py to prepare two oracle-free workspaces, then launch two fresh interactive sessions with --model set to the exact full model ID, --safe-mode, --restricted, and distinct --session-id values."
     - "Qualification evidence is valid only when the persisted Claude transcript reports the exact model ID, the harness scores every scenario, and pair validation confirms identical candidate and evaluation-bundle hashes with distinct contexts."
-    - "The Agent tool model parameter constitutes explicit_tool_selection assurance only when the provider accepts and reflects the exact registry model ID."
-  tier_bindings:
+    - "A plugin subagent definition is selection intent, not execution proof. Require a native Agent invocation and provider-observed exact model and effort before accepting ordinary delegation."
+  tier_agents_v3:
+    ultimate_intelligence: "agent-council:council-ultimate"
+    operational_intelligence: "agent-council:council-operational"
+    technical_tactical_intelligence: "agent-council:council-technical"
+    worker_intelligence: "agent-council:council-worker"
+  tier_bindings_v3:
+    ultimate_intelligence: "claude-code-v3-ultimate -> claude-opus-5-5; default effort high, subject to qualification"
+    operational_intelligence: "claude-code-v3-operational -> claude-opus-5-5; default effort medium, subject to qualification"
+    technical_tactical_intelligence: "claude-code-v3-technical -> claude-opus-5-5; default effort medium, subject to qualification"
+    worker_intelligence: "claude-code-v3-worker -> claude-haiku-4-5-20251001; effort unsupported (null), subject to qualification"
+  historical_tier_bindings_v2:
     ultimate_intelligence: "claude-code-v2-ultimate -> claude-fable-5-1"
     operational_intelligence: "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5"
     technical_tactical_intelligence: "claude-code-v2-technical -> claude-sonnet-5"

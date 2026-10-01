@@ -32,9 +32,17 @@
       "type": "regex",
       "name": "same-tier-fallback",
       "target": "last_message",
-      "pattern": "same.tier.*fallback|fallback.*same.tier",
+      "pattern": "(?:select|choose|use|prefer)\\s+(?:the\\s+)?(?:active\\s+)?(?:qualified\\s+)?same[ -]tier\\s+fallback|same[ -]tier\\s+fallback\\s+(?:is\\s+)?(?:selected|first|takes priority)",
       "flags": "i",
       "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-contradictory-selection",
+      "target": "last_message",
+      "pattern": "(?:^|[.!?;\\n]|\\bbut|\\bhowever|\\binstead)\\s*[, :]?\\s*(?:(?:I|we)\\s+(?:will|should)\\s+)?(?:select|choose|use|prefer|assign|escalate to)\\s+(?:the\\s+)?(?:a\\s+)?(?:higher|lower)[ -]tier|Council check:\\s*governed|(?:^|[.!?;\\n])\\s*(?:the\\s+)?(?:selected\\s+)?route\\s*(?:is|:)\\s*R[123]\\b",
+      "flags": "i",
+      "match": "not_contains"
     },
     {
       "type": "regex",

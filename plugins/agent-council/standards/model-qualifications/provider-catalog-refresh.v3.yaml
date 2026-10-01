@@ -1,0 +1,68 @@
+schema_version: agent-council.model-qualification-plan/v1
+record_type: model_qualification_plan
+record_id: provider-catalog-refresh-v3
+status: awaiting_native_qualification
+registry_ref: standards/agent-model-registry.v3.yaml
+historical_registry_ref: standards/agent-model-registry.v2.yaml
+scope:
+  codex: GPT-6 tier targets with effort selected per binding
+  claude_code: Opus 5.5 at high effort for ultimate and medium effort for operational and technical; Haiku 4.5 with unsupported effort for worker are candidate targets
+claude_access_observation:
+  observed_on: 2026-10-01
+  host: Claude Code 2.1.285 interactive CLI
+  fable: Fable 5.1 requires separately purchased usage credits absent on this account; the host automatically switched to Opus 5.5 at high effort
+  ultimate_candidate: claude-opus-5-5
+  scope: READY response establishes capability smoke only; fresh exact-binding qualification and Agent probe remain required
+  historical: Preserve the v2 Fable binding and historical evidence without edits
+technical_fallback:
+  reason: Sonnet 5 at high effort did not provide a reliable technical route in native attempts
+  target: claude-opus-5-5 at medium effort, matching the operational model and effort while retaining a separate technical tier binding
+  qualification: Fresh independent technical role qualification and controlled Agent probe are required; operational evidence does not transfer
+effort_policy:
+  codex_allowed_efforts: [low, medium, high, xhigh]
+  codex_basis: Bounded subset of effort values exposed by the current native collaboration tool
+  claude_allowed_efforts: Target default only until native capability evidence establishes other values
+  haiku_worker: The restored worker candidate has unsupported effort with supported=false, default_effort=null, and allowed_efforts=[]; two prior native runs passed all 12 semantic cases but require fresh runs under the current candidate and response grammar
+  capability: Registry allowlists constrain policy and do not prove native support
+  qualification: Each new model and effort combination requires evidence before use
+qualification_state:
+  candidate_bindings: all_v3_bindings
+  qualified_bindings: []
+  native_receipts: []
+  historical_receipts: Evidence only for their original model, effort, candidate, and registry
+  reuse: No automatic transfer of v2 qualification to v3
+requirements:
+  - Complete runtime, schema, adapter, and behavioral inventory integration before freezing the candidate.
+  - Record provider capability evidence for the exact model and its supported effort controls.
+  - Run two fresh, clean, blind native qualification runs for each binding on identical candidate and evaluation bundle bytes.
+  - Record the exact observed model ID and selected and observed effort for each run.
+  - For every Claude Code binding, observe a native Agent invocation of its packaged plugin subagent and the exact actual model and effort in the task record.
+  - Plugin validation and subagent frontmatter prove configuration only; neither proves a native Agent dispatch or prevents provider substitution.
+  - For unsupported effort, record null and evidence that the provider exposes no effort control for that model.
+  - Unsupported-effort capability and dispatch receipts must explicitly attest null; missing effort is not evidence of unsupported effort.
+  - Bind each receipt to the registry hash, binding hash, candidate hash, evaluation bundle hash, and distinct native session ID.
+  - Before promotion, pass native blind qualification, controlled Agent binding probes, and focused structural and adversarial gates that do not require ordinary qualified routing.
+  - Keep candidates ineligible for ordinary governed dispatch until promotion is evidenced.
+promotion:
+  record: Add a new qualification receipt that references both native runs.
+  registry: Publish a new registry snapshot and recompute binding and registry hashes.
+  historical_evidence: Preserve previous registry snapshots, receipts, and pinned cases without edits.
+  new_cases: Select the promoted snapshot explicitly through the supported runtime.
+  existing_cases: Keep the pinned registry; migrate only through a fresh case or supported new cycle with fresh evidence.
+  provider_status: Keep fail_closed_until_qualified until required provider bindings satisfy the qualification gate.
+release_gate:
+  - After promotion, rerun lightweight-positive against the qualified registry and verify a worker or technical plugin agent was invoked.
+  - Run the full native release suite against the same release identity; a failed case blocks release even when model qualification passed.
+lifecycle:
+  model_id: claude-sonnet-5
+  status: former_technical_candidate
+  source: Official provider model lifecycle notices
+  checks:
+    - Check lifecycle and native availability before qualification and before promotion.
+    - Record the observation timestamp and source URL in new evidence.
+    - Preserve historical Sonnet evidence; qualify the replacement technical binding separately.
+  automated_monitor: not_configured_by_this_plan
+limitations:
+  - This plan is not a native qualification receipt or provider capability assertion.
+  - Catalog inclusion and user approval do not establish native availability or qualification.
+  - A passing historical Opus 5.5 run at high effort does not qualify the medium effort target.

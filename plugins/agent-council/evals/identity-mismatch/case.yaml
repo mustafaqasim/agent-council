@@ -31,10 +31,16 @@
     },
     {
       "type": "regex",
-      "name": "mismatch-recognized",
+      "name": "required-binding-identified",
       "target": "last_message",
-      "pattern": "mismatch|different|does not match",
-      "flags": "i",
+      "pattern": "qualified-ultimate-A",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "receipt-binding-identified",
+      "target": "last_message",
+      "pattern": "unqualified-B",
       "match": "contains"
     },
     {

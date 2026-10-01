@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -24,7 +25,11 @@ from typing import Any
 _SHA = re.compile(r"^[a-f0-9]{64}$")
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{2,127}$")
 _ROLES = {"ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence"}
+_ROLE_RANK = {"worker_intelligence": 0, "technical_tactical_intelligence": 1, "operational_intelligence": 2, "ultimate_intelligence": 3}
+_CAPABILITY_TTL_SECONDS = 86400
+_CAPABILITY_CLOCK_SKEW_SECONDS = 300
 _EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
+_DEFAULT_EFFORT = object()
 _STAGES = ("intake", "observe", "orient", "decide", "act", "verify", "review", "close")
 _STAGE = {name: index for index, name in enumerate(_STAGES)}
 _TYPES = {"case", "packet", "dispatch", "gate", "test", "evidence", "interruption", "resumption", "supersession", "candidate_transition", "closure"}
@@ -123,7 +128,7 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
 
 
-def _outcome(result: str, code: str, effort: str | None = None, state: dict[str, Any] | None = None) -> dict[str, Any]:
+def _outcome(result: str, code: str, effort: Any = _DEFAULT_EFFORT, state: dict[str, Any] | None = None) -> dict[str, Any]:
     answer: dict[str, Any] = {
         "result": result,
         "code": code,
@@ -131,7 +136,7 @@ def _outcome(result: str, code: str, effort: str | None = None, state: dict[str,
         "provider_execution_attested": False,
         "uat_authority": False,
     }
-    if effort is not None:
+    if effort is not _DEFAULT_EFFORT:
         answer["effort"] = effort
     if state is not None:
         answer["state"] = state
@@ -166,6 +171,55 @@ def _public_text_list(value: Any, allowed: set[str] | tuple[str, ...] | None = N
     if len(value) != len(set(value)):
         return False
     return allowed is None or all(item in allowed for item in value)
+
+
+def _effort_valid(value: Any) -> bool:
+    return value is None or isinstance(value, str) and value in _EFFORTS
+
+
+def _capability_efforts_valid(value: Any) -> bool:
+    # Null is an explicit no-control attestation, never a wildcard or an
+    # unknown capability. A mixed list would make that assertion ambiguous.
+    return value == [None] or _public_text_list(value, _EFFORTS)
+
+
+def _binding_reasoning_valid(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != {"supported", "default_effort", "allowed_efforts"} or not isinstance(value["supported"], bool):
+        return False
+    if not value["supported"]:
+        return value["default_effort"] is None and value["allowed_efforts"] == []
+    return _public_text_list(value["allowed_efforts"], _EFFORTS) and isinstance(value["default_effort"], str) and value["default_effort"] in value["allowed_efforts"]
+
+
+def _binding_reasoning(registry: dict[str, Any], binding: dict[str, Any]) -> dict[str, Any]:
+    if registry["schema_version"] == "agent-council.model-registry/v2":
+        return {"supported": True, "default_effort": "high", "allowed_efforts": list(_EFFORTS)}
+    return binding["reasoning"]
+
+
+def _binding_effort_valid(registry: dict[str, Any], binding: dict[str, Any], effort: Any) -> bool:
+    if registry.get("schema_version") not in {"agent-council.model-registry/v2", "agent-council.model-registry/v3"}:
+        return False
+    if registry["schema_version"] == "agent-council.model-registry/v3" and not _binding_reasoning_valid(binding.get("reasoning")):
+        return False
+    reasoning = _binding_reasoning(registry, binding)
+    if not reasoning["supported"]:
+        return effort is None
+    if registry["schema_version"] == "agent-council.model-registry/v3":
+        # Current promotion proves the default effort only. Capability support
+        # and escalation evidence cannot qualify a different model/effort pair.
+        return effort == reasoning["default_effort"]
+    return isinstance(effort, str) and effort in reasoning["allowed_efforts"] and _EFFORTS.index(effort) >= _EFFORTS.index(reasoning["default_effort"])
+
+
+def _binding_role_qualified(registry: dict[str, Any], binding: dict[str, Any], role: str) -> bool:
+    """An explicit fallback edge grants no qualification for another role."""
+    if registry.get("schema_version") != "agent-council.model-registry/v3":
+        return binding.get("tier") == role
+    # Historical proofs qualify only their declared tier. New role protocols
+    # publish their verified coverage in the exact promoted binding hash.
+    roles = binding.get("qualified_roles", [binding.get("tier")])
+    return _public_text_list(roles, _ROLES) and role in roles
 
 
 def _owned_process_valid(process: Any, reconciled_only: bool = False) -> bool:
@@ -268,12 +322,21 @@ def _candidate_identity_problem(case: Any) -> str | None:
 
 
 def _registry_valid(registry: Any, identity: dict[str, Any]) -> bool:
-    if not isinstance(registry, dict) or not isinstance(identity, dict) or not isinstance(registry.get("reasoning"), dict) or registry.get("schema_version") != "agent-council.model-registry/v2" or registry.get("registry_version") != identity.get("registry_version") or registry.get("registry_sha256") != identity.get("registry_sha256") or registry["reasoning"].get("default_effort") != "high" or not isinstance(registry.get("provider_states"), dict):
+    if not isinstance(registry, dict) or not isinstance(identity, dict) or registry.get("schema_version") not in {"agent-council.model-registry/v2", "agent-council.model-registry/v3"} or registry.get("registry_version") != identity.get("registry_version") or registry.get("registry_sha256") != identity.get("registry_sha256") or not isinstance(registry.get("provider_states"), dict):
+        return False
+    per_binding = registry["schema_version"] == "agent-council.model-registry/v3"
+    if registry["registry_version"] == "v3" and not per_binding:
+        return False
+    if registry.get("reasoning") != ({"policy": "per_binding"} if per_binding else {"default_effort": "high"}):
+        return False
+    if per_binding and (set(registry) != {"schema_version", "registry_version", "registry_sha256", "reasoning", "provider_states", "bindings"} or registry["registry_version"] != "v3"):
         return False
     declared_registry_sha = registry.get("registry_sha256")
     if declared_registry_sha != _digest({key: value for key, value in registry.items() if key != "registry_sha256"}):
         return False
-    if any(not isinstance(state, dict) or state.get("council_status") not in {"qualified", "fail_closed_until_qualified"} for state in registry["provider_states"].values()):
+    if any(not isinstance(state, dict) or state.get("council_status") not in ({"qualified", "partially_qualified", "fail_closed_until_qualified"} if per_binding else {"qualified", "fail_closed_until_qualified"}) for state in registry["provider_states"].values()):
+        return False
+    if per_binding and any(_public_text_problem(provider) or set(state) != {"council_status"} for provider, state in registry["provider_states"].items()):
         return False
     bindings = registry.get("bindings")
     if not isinstance(bindings, list) or not bindings:
@@ -283,11 +346,72 @@ def _registry_valid(registry: Any, identity: dict[str, Any]) -> bool:
         if not isinstance(binding, dict) or not _identifier(binding.get("binding_id")) or binding["binding_id"] in seen:
             return False
         seen.add(binding["binding_id"])
-        if not isinstance(binding.get("provider"), str) or not binding["provider"] or not isinstance(binding.get("model_id"), str) or not binding["model_id"] or binding.get("tier") not in _ROLES or binding.get("status") not in {"qualified", "candidate", "revoked", "hard_expired"} or not _sha(binding.get("binding_sha256")):
+        required = {"binding_id", "provider", "model_id", "tier", "status", "binding_sha256", "reasoning"}
+        if per_binding and (not required <= set(binding) or set(binding) - required - {"selection", "lifecycle", "qualified_roles"} or not _binding_reasoning_valid(binding.get("reasoning")) or not _binding_selection_valid(binding)):
+            return False
+        if not isinstance(binding.get("provider"), str) or not binding["provider"] or not isinstance(binding.get("model_id"), str) or not binding["model_id"] or binding.get("tier") not in _ROLES or binding.get("status") not in ({"qualified", "candidate", "revoked", "hard_expired", "retired"} if per_binding else {"qualified", "candidate", "revoked", "hard_expired"}) or not _sha(binding.get("binding_sha256")):
+            return False
+        if per_binding and binding["provider"] not in registry["provider_states"]:
+            return False
+        if per_binding and "qualified_roles" in binding and (binding["status"] not in {"qualified", "retired"} or not _public_text_list(binding["qualified_roles"], _ROLES) or binding["tier"] not in binding["qualified_roles"]):
             return False
         if binding["binding_sha256"] != _digest({key: value for key, value in binding.items() if key != "binding_sha256"}):
             return False
+    if per_binding:
+        by_id = {item["binding_id"]: item for item in bindings}
+        for provider, summary in registry["provider_states"].items():
+            active = [item for item in bindings if item["provider"] == provider and item["status"] not in {"retired", "revoked", "hard_expired"}]
+            qualified = sum(item["status"] == "qualified" for item in active)
+            expected = "qualified" if active and qualified == len(active) else "partially_qualified" if qualified else "fail_closed_until_qualified"
+            if summary["council_status"] != expected:
+                return False
+        for item in bindings:
+            for target_id in item.get("selection", {}).get("fallback_for", []):
+                target = by_id.get(target_id)
+                if target is None or target == item or target["provider"] != item["provider"] or _ROLE_RANK[item["tier"]] < _ROLE_RANK[target["tier"]]:
+                    return False
+            replacement = item.get("lifecycle", {}).get("replacement_binding_id")
+            if replacement is not None and (replacement not in by_id or replacement == item["binding_id"] or by_id[replacement]["provider"] != item["provider"] or by_id[replacement]["tier"] != item["tier"] or by_id[replacement]["status"] == "retired"):
+                return False
     return True
+
+
+def _binding_selection_valid(binding: dict[str, Any]) -> bool:
+    selection = binding.get("selection")
+    if "selection" in binding:
+        if not isinstance(selection, dict) or set(selection) != {"role", "priority", "fallback_for"} or not isinstance(selection.get("role"), str) or selection["role"] not in {"primary", "reserve"} or type(selection.get("priority")) is not int or selection["priority"] < 0:
+            return False
+        targets = selection.get("fallback_for")
+        if not isinstance(targets, list) or any(not _identifier(item) for item in targets) or len(set(targets)) != len(targets):
+            return False
+    lifecycle = binding.get("lifecycle")
+    if "lifecycle" in binding:
+        if not isinstance(lifecycle, dict) or set(lifecycle) != {"retired_at", "reason", "replacement_binding_id"}:
+            return False
+        if lifecycle["reason"] is not None and _public_text_problem(lifecycle["reason"]) or lifecycle["replacement_binding_id"] is not None and not _identifier(lifecycle["replacement_binding_id"]):
+            return False
+        if lifecycle["retired_at"] is not None:
+            try:
+                if datetime.fromisoformat(lifecycle["retired_at"].replace("Z", "+00:00")).tzinfo is None:
+                    return False
+            except (AttributeError, TypeError, ValueError):
+                return False
+        if binding.get("status") == "retired" and (lifecycle["retired_at"] is None or lifecycle["reason"] is None):
+            return False
+        if binding.get("status") != "retired" and any(value is not None for value in lifecycle.values()):
+            return False
+    return binding.get("status") != "retired" or lifecycle is not None
+
+
+def _capability_fresh(value: dict[str, Any]) -> bool:
+    try:
+        observed = datetime.fromisoformat(value["observed_at"].replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            return False
+        age = (datetime.now(timezone.utc) - observed).total_seconds()
+        return -_CAPABILITY_CLOCK_SKEW_SECONDS <= age <= _CAPABILITY_TTL_SECONDS
+    except (KeyError, AttributeError, TypeError, ValueError):
+        return False
 
 
 def _capability_valid(value: Any) -> bool:
@@ -295,7 +419,7 @@ def _capability_valid(value: Any) -> bool:
     if not isinstance(value, dict) or set(value) != required or value.get("receipt_type") != "provider_capability" or not _sha(value.get("receipt_sha256")) or any(_public_text_problem(value.get(field)) for field in ("receipt_id", "provider", "observed_at", "context_id")):
         return False
     models, efforts = value.get("models"), value.get("efforts")
-    if not _public_text_list(models) or not _public_text_list(efforts, _EFFORTS):
+    if not _public_text_list(models) or not _capability_efforts_valid(efforts):
         return False
     if value["receipt_sha256"] != _digest({key: nested for key, nested in value.items() if key != "receipt_sha256"}):
         return False
@@ -308,7 +432,7 @@ def _capability_valid(value: Any) -> bool:
 def _dispatch_valid(value: Any) -> bool:
     required = {"receipt_type", "receipt_id", "receipt_sha256", "dispatch_id", "provider", "model_id", "selected_effort", "attested_effort", "context_id", "system_generated"}
     fields = ("receipt_id", "dispatch_id", "provider", "model_id", "context_id")
-    if not isinstance(value, dict) or set(value) != required or value.get("receipt_type") != "provider_dispatch" or not _sha(value.get("receipt_sha256")) or any(_public_text_problem(value.get(field)) for field in fields) or value.get("selected_effort") not in _EFFORTS or value.get("attested_effort") not in _EFFORTS or not isinstance(value.get("system_generated"), bool):
+    if not isinstance(value, dict) or set(value) != required or value.get("receipt_type") != "provider_dispatch" or not _sha(value.get("receipt_sha256")) or any(_public_text_problem(value.get(field)) for field in fields) or not _effort_valid(value.get("selected_effort")) or not _effort_valid(value.get("attested_effort")) or not isinstance(value.get("system_generated"), bool):
         return False
     try:
         return value["receipt_sha256"] == _digest({key: nested for key, nested in value.items() if key != "receipt_sha256"})
@@ -555,34 +679,41 @@ def _route_and_provider(case: dict[str, Any], state: dict[str, Any]) -> tuple[st
         observed = datetime.fromisoformat(capability["observed_at"].replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:
         return None, "SCHEMA_VALIDATION_FAILED"
-    age = (datetime.now(timezone.utc) - observed).total_seconds()
-    if age < -86400 or age > 86400:
+    if not _capability_fresh(capability):
         return None, "CAPABILITY_STALE"
     bindings = [binding for binding in registry["bindings"] if binding["provider"] == dispatch["provider"] and binding["model_id"] == dispatch["model_id"] and binding["status"] == "qualified"]
     matching_dispatches = [event for event in state["active"].values() if event["record_type"] == "dispatch" and event["candidate_id"] == case["engineering_candidate"]["candidate_id"] and event["cycle_id"] == case["cycle_id"] and event["payload"].get("dispatch_receipt_id") == dispatch["receipt_id"]]
     requested = matching_dispatches[0]["payload"].get("requested_role") if len(matching_dispatches) == 1 else None
+    # One model may hold multiple roles with different effort policies.
+    selected_payload = matching_dispatches[0]["payload"] if len(matching_dispatches) == 1 else {}
+    if registry["schema_version"] == "agent-council.model-registry/v3":
+        if not _resolution_matches(registry, selected_payload, requested, capability):
+            return None, "PROVIDER_RECEIPT_MISMATCH"
+        bindings = [binding for binding in bindings if binding["binding_id"] == selected_payload.get("binding_id")]
+    else:
+        bindings = [binding for binding in bindings if binding["tier"] == requested] if requested else bindings
     tier = bindings[0]["tier"] if len(bindings) == 1 else None
     if len(bindings) != 1:
         return None, "PROVIDER_RECEIPT_MISMATCH"
     bounded = any(event["payload"].get("bounded_worker") is True for event in state["history"].values() if event["record_type"] == "packet")
-    allowed = tier == requested == "technical_tactical_intelligence"
-    if case["route"] == "R1" and tier == requested == "worker_intelligence" and bounded:
+    allowed = requested == "technical_tactical_intelligence" and (tier == requested or registry["schema_version"] == "agent-council.model-registry/v3")
+    if case["route"] == "R1" and requested == "worker_intelligence" and bounded and (tier == requested or registry["schema_version"] == "agent-council.model-registry/v3"):
         allowed = True
     if not allowed:
         return None, "IMPLEMENTATION_TIER_INVALID"
     effort = dispatch["selected_effort"]
-    if effort != "high":
-        if _EFFORTS.index(effort) < _EFFORTS.index("high"):
-            return None, "EFFORT_POLICY_INVALID"
+    if not _binding_effort_valid(registry, bindings[0], effort):
+        return None, "EFFORT_POLICY_INVALID"
+    if effort != _binding_reasoning(registry, bindings[0])["default_effort"]:
         current = case["engineering_candidate"]["candidate_id"]
         evidence = {event["payload"].get("evidence_id") for event in state["history"].values() if event["record_type"] == "evidence" and event["candidate_id"] == current}
         escalations = [event for event in state["history"].values() if event["record_type"] == "gate" and event["payload"].get("system_generated") is True and event["payload"].get("cause") in _ESCALATION_CAUSES]
         if not any(event["payload"].get("evidence_id") in evidence for event in escalations):
             return None, "EFFORT_POLICY_INVALID"
-        if dispatch["provider"] != capability["provider"] or dispatch["context_id"] != capability["context_id"] or dispatch["model_id"] not in capability["models"] or effort not in capability["efforts"] or registry["provider_states"].get(dispatch["provider"], {}).get("council_status") != "qualified":
+        if dispatch["provider"] != capability["provider"] or dispatch["context_id"] != capability["context_id"] or dispatch["model_id"] not in capability["models"] or effort not in capability["efforts"] or registry["provider_states"].get(dispatch["provider"], {}).get("council_status") not in {"qualified", "partially_qualified"}:
             return None, "PROVIDER_RECEIPT_MISMATCH"
         return effort, "EFFORT_ESCALATION_ACCEPTED"
-    if len(bindings) != 1 or dispatch["provider"] != capability["provider"] or dispatch["context_id"] != capability["context_id"] or dispatch["model_id"] not in capability["models"] or effort not in capability["efforts"] or registry["provider_states"].get(dispatch["provider"], {}).get("council_status") != "qualified":
+    if len(bindings) != 1 or dispatch["provider"] != capability["provider"] or dispatch["context_id"] != capability["context_id"] or dispatch["model_id"] not in capability["models"] or effort not in capability["efforts"] or registry["provider_states"].get(dispatch["provider"], {}).get("council_status") not in {"qualified", "partially_qualified"}:
         return None, "PROVIDER_RECEIPT_MISMATCH"
     return effort, None
 
@@ -699,26 +830,28 @@ def _authority_dispatch_valid(event: dict[str, Any], case: dict[str, Any], role:
     provider_states = registry.get("provider_states")
     if not isinstance(bindings, list) or not isinstance(provider_states, dict):
         return False
-    matches = [binding for binding in bindings if isinstance(binding, dict) and binding.get("provider") == payload.get("provider") and binding.get("model_id") == payload.get("model_id") and binding.get("tier") == role and binding.get("status") == "qualified" and binding.get("binding_id") == payload.get("binding_id") and binding.get("binding_sha256") == payload.get("binding_sha256")]
+    per_binding = registry.get("schema_version") == "agent-council.model-registry/v3"
+    matches = [binding for binding in bindings if isinstance(binding, dict) and binding.get("provider") == payload.get("provider") and binding.get("model_id") == payload.get("model_id") and (per_binding or binding.get("tier") == role) and binding.get("status") == "qualified" and binding.get("binding_id") == payload.get("binding_id") and binding.get("binding_sha256") == payload.get("binding_sha256")]
     provider_state = provider_states.get(payload.get("provider"), {})
     # A local replay may validate all fields, but never proves the provider
     # generated them.  Legacy imported records are treated with the same
     # structural-only assurance and do not elevate the evaluator's outcome.
-    if not isinstance(provider_state, dict) or len(matches) != 1 or provider_state.get("council_status") != "qualified" or payload.get("requested_role") != role or payload.get("receipt_provenance") not in {"structural_only", "platform_returned"} or payload.get("receipt_assurance", "structural_only") != "structural_only" or payload.get("selected_effort") != payload.get("attested_effort") or payload.get("selected_effort") not in {"high", "xhigh", "max", "ultra"}:
+    if not isinstance(provider_state, dict) or len(matches) != 1 or provider_state.get("council_status") not in ({"qualified", "partially_qualified"} if per_binding else {"qualified"}) or payload.get("requested_role") != role or payload.get("receipt_provenance") not in {"structural_only", "platform_returned"} or payload.get("receipt_assurance", "structural_only") != "structural_only" or "selected_effort" not in payload or "attested_effort" not in payload or payload.get("selected_effort") != payload.get("attested_effort") or not _binding_effort_valid(registry, matches[0], payload.get("selected_effort")):
         return False
     required_public = ("dispatch_receipt_id", "provider", "binding_id", "requested_role", "model_id", "capability_receipt_id", "platform_task_id", "platform_context_id", "platform_output_ref", "capability_context_id", "capability_observed_at")
-    if any(_public_text_problem(payload.get(field)) for field in required_public) or payload.get("capability_context_id") != payload.get("platform_context_id") or not _public_text_list(payload.get("capability_models")) or not _public_text_list(payload.get("capability_efforts"), _EFFORTS) or payload.get("model_id") not in payload["capability_models"] or payload.get("selected_effort") not in payload["capability_efforts"] or not _sha(payload.get("capability_receipt_sha256")) or not _sha(payload.get("dispatch_receipt_sha256")) or not _sha(payload.get("binding_sha256")):
+    if any(_public_text_problem(payload.get(field)) for field in required_public) or payload.get("capability_context_id") != payload.get("platform_context_id") or not _public_text_list(payload.get("capability_models")) or not _capability_efforts_valid(payload.get("capability_efforts")) or payload.get("model_id") not in payload["capability_models"] or payload.get("selected_effort") not in payload["capability_efforts"] or not _sha(payload.get("capability_receipt_sha256")) or not _sha(payload.get("dispatch_receipt_sha256")) or not _sha(payload.get("binding_sha256")):
         return False
     capability_snapshot = {"receipt_type": "provider_capability", "receipt_id": payload["capability_receipt_id"], "provider": payload["provider"], "observed_at": payload.get("capability_observed_at"), "context_id": payload["capability_context_id"], "models": payload.get("capability_models"), "efforts": payload.get("capability_efforts")}
     dispatch_snapshot = {"receipt_type": "provider_dispatch", "receipt_id": payload.get("dispatch_receipt_id"), "dispatch_id": payload["platform_task_id"], "provider": payload["provider"], "model_id": payload["model_id"], "selected_effort": payload["selected_effort"], "attested_effort": payload["attested_effort"], "context_id": payload["platform_context_id"], "system_generated": True}
     if not payload.get("dispatch_receipt_id") or not _sha(payload.get("dispatch_receipt_sha256")) or payload["capability_receipt_sha256"] != _digest(capability_snapshot) or payload["dispatch_receipt_sha256"] != _digest(dispatch_snapshot):
         return False
+    if per_binding and not _resolution_matches(registry, payload, role, dict(capability_snapshot, receipt_sha256=payload["capability_receipt_sha256"])):
+        return False
     try:
         observed = datetime.fromisoformat(str(payload.get("capability_observed_at", "")).replace("Z", "+00:00")).astimezone(timezone.utc)
     except (TypeError, ValueError):
         return False
-    age = (datetime.now(timezone.utc) - observed).total_seconds()
-    return -86400 <= age <= 86400
+    return _capability_fresh(capability_snapshot)
 
 
 def _behavioral_evidence_records(case_root: Path, events: list[dict[str, Any]], candidate: dict[str, Any], cycle_id: str) -> dict[str, dict[str, Any]]:
@@ -960,6 +1093,7 @@ def evaluate_contract_case(case_document: dict[str, Any]) -> dict[str, Any]:
             return _refuse(issue)
         if not _registry_valid(case_document["registry"], case_document["identity"]) or not _capability_valid(case_document["provider_capability_receipt"]) or not _dispatch_valid(case_document["provider_dispatch_receipt"]):
             return _refuse("SCHEMA_VALIDATION_FAILED")
+        _require_case_promotion(case_document, Path(case_document["case_root"]))
         state, issue = reduce_events(case_document)
         if issue:
             return _refuse(issue)
@@ -971,9 +1105,10 @@ def evaluate_contract_case(case_document: dict[str, Any]) -> dict[str, Any]:
         effort, provider_code = _route_and_provider(case_document, state)
         if provider_code and provider_code != "EFFORT_ESCALATION_ACCEPTED":
             return _refuse(provider_code, state)
-        assert effort is not None
         if not any(event["record_type"] in {"closure", "test"} or event["payload"].get("stage") == "decide" for event in state["history"].values()):
-            return _outcome("resolved", "DEFAULT_EFFORT_HIGH", "high", state)
+            if case_document["registry"]["schema_version"] == "agent-council.model-registry/v2":
+                return _outcome("resolved", "DEFAULT_EFFORT_HIGH", "high", state)
+            return _outcome("resolved", "BINDING_EFFORT_RESOLVED", effort, state)
         issue = _stage_and_packets(case_document, state)
         if issue == "STAGE_DECIDE_ACCEPTED":
             return _outcome("accepted", issue, effort, state)
@@ -993,6 +1128,8 @@ def evaluate_contract_case(case_document: dict[str, Any]) -> dict[str, Any]:
         if state["resumptions"]:
             return _outcome("resumed", "INTERRUPTION_RESUMED", effort, state)
         return _outcome("accepted", "CASE_ACCEPTED", effort, state)
+    except AuthoringError as exc:
+        return _refuse(exc.code)
     except (AttributeError, KeyError, TypeError, ValueError, OSError, RuntimeError, RecursionError):
         return _refuse("SCHEMA_VALIDATION_FAILED")
 
@@ -1001,6 +1138,8 @@ def evaluate_contract_case(case_document: dict[str, Any]) -> dict[str, Any]:
 # provenance from facts returned by an already-completed native dispatch.
 _PACKAGE = Path(__file__).resolve().parents[4]
 _PINNED_ARTIFACTS = (
+    "plugin.json",
+    ".claude-plugin/plugin.json",
     ".codex-plugin/plugin.json",
     "scripts/core/agent-council/0.2.0/Invoke-AgentCouncil.py",
     "scripts/core/agent-council/0.2.0/Bootstrap-AgentCouncil.py",
@@ -1009,11 +1148,14 @@ _PINNED_ARTIFACTS = (
     "standards/agent-council-record.schema.v2.yaml",
     "standards/agent-council-executing-bundle.schema.v2.yaml",
     "standards/agent-model-registry.schema.v2.yaml",
+    "standards/agent-model-registry.schema.v3.yaml",
     "standards/provider-capability-receipt.schema.v2.yaml",
     "standards/provider-dispatch-receipt.schema.v2.yaml",
     "standards/agent-model-registry.v2.yaml",
     "standards/model-qualifications/initial-codex-designation.v2.yaml",
     "skills/agent-council/SKILL.md",
+    "skills/agent-council/references/lightweight-routing.yaml",
+    "skills/agent-council/references/governed-workflow.yaml",
     "skills/agent-council/references/model-adapters.yaml",
     "skills/agent-council/references/review-lenses.yaml",
     "skills/agent-council/references/forward-tests.yaml",
@@ -1029,6 +1171,114 @@ class AuthoringError(RuntimeError):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
+
+
+def _promotion_verifier():
+    # Use the installed verifier code on frozen bytes. Never execute code from
+    # the imported case or resolve evidence against a later installed package.
+    scripts = str(Path(__file__).resolve().parents[3])
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    try:
+        import AgentCouncilPromotion
+    except ImportError as exc:
+        raise AuthoringError("PROMOTION_VERIFIER_UNAVAILABLE") from exc
+    return AgentCouncilPromotion
+
+
+def _requires_promotion(registry: dict[str, Any]) -> bool:
+    return registry.get("schema_version") == "agent-council.model-registry/v3" and (
+        any(value.get("council_status") == "qualified" for value in registry.get("provider_states", {}).values())
+        or any(value.get("status") == "qualified" for value in registry.get("bindings", [])))
+
+
+def _artifact_snapshot(root: Path, names: Any, pins: dict[str, str] | None = None) -> dict[str, bytes]:
+    """Read a confined regular-file snapshot, refusing aliases and changed bytes."""
+    verifier = _promotion_verifier()
+    if any(path.is_symlink() for path in (root, *root.parents)) or not root.is_dir():
+        raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+    snapshot: dict[str, bytes] = {}
+    observations: dict[str, tuple[int, int, int, int, int]] = {}
+    identities: set[tuple[int, int]] = set()
+    def metadata(value: os.stat_result) -> tuple[int, int, int, int, int]:
+        return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+    def path_for(relative: str) -> Path:
+        current = root
+        for part in verifier.path_name(relative).split("/"):
+            current /= part
+            if current.is_symlink():
+                raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+        return current
+    try:
+        for relative in sorted(set(names)):
+            path = path_for(relative)
+            before = path.stat()
+            identity = before.st_dev, before.st_ino
+            if not stat.S_ISREG(before.st_mode) or identity in identities:
+                raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+            raw = path.read_bytes()
+            if metadata(before) != metadata(path.stat()):
+                raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+            if pins is not None and (not _sha(pins.get(relative)) or hashlib.sha256(raw).hexdigest() != pins[relative]):
+                raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+            identities.add(identity)
+            observations[relative] = metadata(before)
+            snapshot[relative] = raw
+        for relative, observed in observations.items():
+            if metadata(path_for(relative).stat()) != observed:
+                raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+    except (OSError, ValueError, TypeError) as exc:
+        raise AuthoringError("PROMOTION_EVIDENCE_INVALID") from exc
+    return snapshot
+
+
+def _promotion_binding(result: dict[str, Any]) -> dict[str, str]:
+    return {"schema_version": "agent-council.case-promotion/v1",
+            "package_sha256": result["promoted_release_binding"]["behavioral_identity"]["behavioral_sha256"],
+            "proof_sha256": result["promotion_proof_sha256"]}
+
+
+def _verify_promotion_snapshot(registry: dict[str, Any], files: dict[str, bytes], binding: Any,
+                               candidate_root: Path | None = None) -> dict[str, Any]:
+    if not isinstance(binding, dict) or set(binding) != {"schema_version", "package_sha256", "proof_sha256"} or binding.get("schema_version") != "agent-council.case-promotion/v1" or not all(_sha(binding.get(key)) for key in ("package_sha256", "proof_sha256")):
+        raise AuthoringError("PROMOTION_EVIDENCE_REQUIRED")
+    try:
+        verifier = _promotion_verifier()
+        source_root = candidate_root if candidate_root is not None else verifier.frozen_candidate_root(files)
+        result = verifier.verify_promotion_bytes(files, expected_package_sha256=binding["package_sha256"],
+                                                 expected_proof_sha256=binding["proof_sha256"],
+                                                 candidate_root=source_root)
+        if verifier.decode(files[verifier.REGISTRY_PATH]) != registry:
+            raise AuthoringError("PROMOTION_REGISTRY_MISMATCH")
+        protocol_files = set(verifier.protocol.PROTOCOL_FILES)
+        frozen_paths = set(result["promoted_release_binding"]["behavioral_identity"]["paths"])
+        if protocol_files & frozen_paths:
+            # A package that ships the role protocol cannot regain authority
+            # through a historical claim-only proof or partial protocol marker.
+            if not protocol_files <= frozen_paths or result.get("qualification_protocol_version") != verifier.ROLE_PROTOCOL:
+                raise AuthoringError("PROMOTION_ROLE_PROTOCOL_REQUIRED")
+            for item in registry["bindings"]:
+                if item["status"] == "qualified" and item.get("qualified_roles") != verifier.protocol.protocol_binding(item)["role_coverage"]:
+                    raise AuthoringError("PROMOTION_ROLE_PROTOCOL_REQUIRED")
+        return result
+    except (OSError, ValueError, KeyError, TypeError, RecursionError) as exc:
+        raise AuthoringError("PROMOTION_EVIDENCE_INVALID") from exc
+
+
+def _require_case_promotion(state: dict[str, Any], root: Path) -> None:
+    registry = state.get("registry", {})
+    policy = state.get("policy_bundle", {})
+    pins = policy.get("artifact_pins")
+    if (registry.get("registry_version") == "v3" or isinstance(pins, dict) and "standards/agent-model-registry.v3.yaml" in pins) and registry.get("schema_version") != "agent-council.model-registry/v3":
+        raise AuthoringError("PROMOTION_REGISTRY_MISMATCH")
+    if not _requires_promotion(registry):
+        return
+    if not isinstance(pins, dict) or not pins or not isinstance(policy.get("promotion_binding"), dict):
+        raise AuthoringError("PROMOTION_EVIDENCE_REQUIRED")
+    if policy.get("policy_sha256") != _digest({key: value for key, value in pins.items() if key.startswith("standards/") or key.startswith("skills/")}):
+        raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+    snapshot = _artifact_snapshot(root / "pinned", pins, pins)
+    _verify_promotion_snapshot(registry, snapshot, policy["promotion_binding"])
 
 
 def _candidate_input_problem(candidate: Any) -> str | None:
@@ -1144,8 +1394,8 @@ def _dispatch_payload_problem(payload: Any) -> str | None:
             return issue
     if not all(_sha(payload.get(field)) for field in ("dispatch_receipt_sha256", "binding_sha256", "capability_receipt_sha256", "plan_nonce_sha256", "dispatch_request_sha256")):
         return "SCHEMA_VALIDATION_FAILED"
-    string_enums = ("requested_role", "decision_kind", "disposition", "receipt_provenance", "receipt_assurance", "selected_effort", "attested_effort")
-    if any(not isinstance(payload.get(field), str) for field in string_enums) or payload.get("requested_role") not in _ROLES or payload.get("decision_kind") not in {"routing", "design", "implementation", "review", "native_forward", "final"} or payload.get("disposition") not in {"approved", "hold", "rejected"} or payload.get("receipt_provenance") != "structural_only" or payload.get("receipt_assurance") != "structural_only" or payload.get("selected_effort") not in _EFFORTS or payload.get("attested_effort") not in _EFFORTS or not _public_text_list(payload.get("capability_models")) or not _public_text_list(payload.get("capability_efforts"), _EFFORTS) or not _dispatch_plan_identity_valid(payload.get("dispatch_plan_identity")):
+    string_enums = ("requested_role", "decision_kind", "disposition", "receipt_provenance", "receipt_assurance")
+    if any(not isinstance(payload.get(field), str) for field in string_enums) or payload.get("requested_role") not in _ROLES or payload.get("decision_kind") not in {"routing", "design", "implementation", "review", "native_forward", "final"} or payload.get("disposition") not in {"approved", "hold", "rejected"} or payload.get("receipt_provenance") != "structural_only" or payload.get("receipt_assurance") != "structural_only" or not _effort_valid(payload.get("selected_effort")) or not _effort_valid(payload.get("attested_effort")) or not _public_text_list(payload.get("capability_models")) or not _capability_efforts_valid(payload.get("capability_efforts")) or not _dispatch_plan_identity_valid(payload.get("dispatch_plan_identity")):
         return "SCHEMA_VALIDATION_FAILED"
     if payload["model_id"] not in payload["capability_models"] or payload["selected_effort"] not in payload["capability_efforts"] or payload["attested_effort"] not in payload["capability_efforts"] or payload["capability_context_id"] != payload["platform_context_id"]:
         return "SCHEMA_VALIDATION_FAILED"
@@ -1521,6 +1771,7 @@ def _pending_semantics_problem(root: Path, journal: dict[str, Any], current: byt
             return issue
         if proposed.get("case_root") != str(root.resolve()):
             return "TRANSACTION_PATH_REFUSED"
+        _require_case_promotion(proposed, root)
         case = {"case_id": proposed["case_id"], "identity": _local_identity(proposed)}
         previous = None
         seen_ids: set[str] = set(); seen_hashes: set[str] = set()
@@ -1581,6 +1832,8 @@ def _pending_semantics_problem(root: Path, journal: dict[str, Any], current: byt
                 if path.startswith("requests/") and requests.get(path) == value:
                     continue
                 return "PENDING_TRANSACTION_INVALID"
+    except AuthoringError as exc:
+        return exc.code
     except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError, _JsonDepthError, RecursionError):
         return "PENDING_TRANSACTION_INVALID"
     return None
@@ -1598,6 +1851,7 @@ def _read_local_case(root: Path) -> dict[str, Any]:
     issue = _authoring_state_problem(state)
     if issue:
         raise AuthoringError(issue)
+    _require_case_promotion(state, root)
     return state
 
 
@@ -1673,19 +1927,24 @@ def _append_local_event(root: Path, state: dict[str, Any], record_type: str, pay
     return transaction["events"][0]
 
 
-def _pinned_artifact_material() -> tuple[dict[str, str], tuple[tuple[str, bytes], ...], dict[str, Any]]:
+def _pinned_artifact_material(registry_version: str = "v3") -> tuple[dict[str, str], tuple[tuple[str, bytes], ...], dict[str, Any]]:
     """Read and validate all pin inputs before a case root is created."""
     pins: dict[str, str] = {}
     material: list[tuple[str, bytes]] = []
     registry_bytes: bytes | None = None
-    for relative in _PINNED_ARTIFACTS:
+    if registry_version not in {"v2", "v3"}:
+        raise AuthoringError("SCHEMA_VALIDATION_FAILED")
+    registry_path = f"standards/agent-model-registry.{registry_version}.yaml"
+    artifacts = _PINNED_ARTIFACTS + (("standards/model-qualifications/provider-catalog-refresh.v3.yaml",) if registry_version == "v3" else ())
+    for original in artifacts:
+        relative = original.replace("agent-model-registry.v2.yaml", f"agent-model-registry.{registry_version}.yaml")
         source = _PACKAGE / relative
         if not source.is_file():
             raise AuthoringError("PINNED_ARTIFACT_MISSING")
         value = source.read_bytes()
         material.append((relative, value))
         pins[relative] = hashlib.sha256(value).hexdigest()
-        if relative == "standards/agent-model-registry.v2.yaml":
+        if relative == registry_path:
             registry_bytes = value
     if registry_bytes is None:
         raise AuthoringError("PINNED_ARTIFACT_MISSING")
@@ -1693,8 +1952,21 @@ def _pinned_artifact_material() -> tuple[dict[str, str], tuple[tuple[str, bytes]
         registry = _decode_json(registry_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, _JsonDepthError, ValueError) as exc:
         raise AuthoringError("PINNED_ARTIFACT_MISSING") from exc
-    if not isinstance(registry, dict):
+    if not isinstance(registry, dict) or registry.get("registry_version") != registry_version or not _registry_valid(registry, {"registry_version": registry_version, "registry_sha256": registry.get("registry_sha256")}):
         raise AuthoringError("PINNED_ARTIFACT_MISSING")
+    if _requires_promotion(registry):
+        try:
+            verifier = _promotion_verifier()
+            verified = verifier.verify_promotion(_PACKAGE.resolve())
+            names = set(pins) | {verifier.INVENTORY_PATH} | set(verified["artifact_paths"]) | set(verified["promoted_release_binding"]["behavioral_identity"]["paths"])
+            snapshot = _artifact_snapshot(_PACKAGE, names)
+            if any(snapshot[name] != raw for name, raw in material):
+                raise AuthoringError("PROMOTION_EVIDENCE_INVALID")
+            _verify_promotion_snapshot(registry, snapshot, _promotion_binding(verified), _PACKAGE.resolve())
+            material = sorted(snapshot.items())
+            pins = {name: hashlib.sha256(raw).hexdigest() for name, raw in material}
+        except (OSError, ValueError, KeyError, TypeError, RecursionError) as exc:
+            raise AuthoringError("PROMOTION_EVIDENCE_INVALID") from exc
     return pins, tuple(material), registry
 
 
@@ -1703,7 +1975,9 @@ def _candidate_artifact_digest(pins: dict[str, str]) -> str:
     return _digest(pins)
 
 
-def init_case(root: Path, project_root: Path, case_id: str, route: str, candidate: dict[str, Any] | None = None, activation_class: str | None = None, case_kind: str = "operational_change") -> dict[str, Any]:
+def init_case(root: Path, project_root: Path, case_id: str, route: str, candidate: dict[str, Any] | None = None, activation_class: str | None = None, case_kind: str = "operational_change", registry_version: str = "v3") -> dict[str, Any]:
+    if registry_version != "v3":
+        raise AuthoringError("HISTORICAL_REGISTRY_CREATION_REFUSED")
     defaults = {"R1": "bounded_automation_repair", "R2": "unqualified_composition", "R3": "shared_contract_change"}
     # Omission selects a route default.  An explicitly supplied empty or
     # malformed class is an invalid public request and must not create a root.
@@ -1722,7 +1996,7 @@ def init_case(root: Path, project_root: Path, case_id: str, route: str, candidat
             raise AuthoringError(issue)
     if root.exists():
         raise AuthoringError("DUPLICATE_EVENT_REFUSED")
-    pins, pin_material, registry = _pinned_artifact_material()
+    pins, pin_material, registry = _pinned_artifact_material(registry_version)
     policy = {key: value for key, value in pins.items() if key.startswith("standards/") or key.startswith("skills/")}
     policy_sha = _digest(policy)
     candidate_value = candidate if candidate is not None else {"source_sha256": _file_sha(Path(__file__)), "package_sha256": _candidate_artifact_digest(pins), "dependency_lock_sha256": _digest({}), "harness_sha256": _file_sha(Path(__file__))}
@@ -1732,6 +2006,16 @@ def init_case(root: Path, project_root: Path, case_id: str, route: str, candidat
     candidate_hashes = dict(candidate_value, policy_sha256=policy_sha)
     candidate_sha = _candidate_digest(candidate_hashes)
     state = {"authoring_schema_version": "agent-council.authoring/v2", "case_id": case_id, "case_root": str(root.resolve()), "project_root": str(project_root.resolve()), "route": route, "activation_class": activation_class, "case_kind": case_kind, "cycle_id": "cycle-000001", "policy_bundle": {"policy_bundle_id": "policy-v2", "policy_sha256": policy_sha, "artifact_pins": pins}, "project_profile": {"profile_id": "default", "profile_path": "profiles/default.yaml", "profile_sha256": pins["profiles/default.yaml"], "semantic_policy_enforcement": "outer_agent_only"}, "engineering_candidate": dict(candidate_hashes, candidate_id=f"candidate-{candidate_sha[:24]}", candidate_sha256=candidate_sha), "registry": registry, "events": [], "capabilities": {}, "dispatch_plans": {}, "dispatch_receipts": {}, "handoff_lifecycle": {}}
+    if _requires_promotion(registry):
+        verifier = _promotion_verifier()
+        snapshot = dict(pin_material)
+        try:
+            proof = verifier.decode(snapshot[verifier.PROOF_PATH])
+            binding = {"schema_version": "agent-council.case-promotion/v1", "package_sha256": proof["promoted_release_binding"]["behavioral_identity"]["behavioral_sha256"], "proof_sha256": pins[verifier.PROOF_PATH]}
+            _verify_promotion_snapshot(registry, snapshot, binding, _PACKAGE.resolve())
+            state["policy_bundle"]["promotion_binding"] = binding
+        except (ValueError, KeyError, TypeError, RecursionError) as exc:
+            raise AuthoringError("PROMOTION_EVIDENCE_INVALID") from exc
     transaction = _prepare_event_transaction(state, [("case", {"stage": "intake", "route": route, "activation_class": activation_class, "case_kind": case_kind, "system_generated": True}, None)])
     # The proposed state, its first event, and every pin are complete and
     # serialized before a directory is made visible at the requested root.
@@ -1774,7 +2058,7 @@ def build_bundle(root: Path) -> dict[str, Any]:
 
 
 def _binding(state: dict[str, Any], provider: str, role: str) -> dict[str, Any]:
-    if provider == "claude_code" and state["registry"].get("provider_states", {}).get(provider, {}).get("council_status") != "qualified":
+    if (provider == "claude_code" or state["registry"].get("schema_version") == "agent-council.model-registry/v3") and state["registry"].get("provider_states", {}).get(provider, {}).get("council_status") != "qualified":
         raise AuthoringError("REQUIRED_TIER_BINDING_UNAVAILABLE")
     matches = [item for item in state["registry"].get("bindings", []) if item.get("provider") == provider and item.get("tier") == role and item.get("status") == "qualified"]
     if len(matches) != 1:
@@ -1782,15 +2066,112 @@ def _binding(state: dict[str, Any], provider: str, role: str) -> dict[str, Any]:
     return matches[0]
 
 
-def capture_capability(root: Path, provider: str, model_id: str, efforts: list[str], context_id: str, observed_at: str | None) -> dict[str, Any]:
-    if any(_public_text_problem(value) for value in (provider, model_id, context_id)) or not _public_text_list(efforts, _EFFORTS):
+def _resolve_binding(registry: dict[str, Any], provider: str, role: str, capability: Any, context_id: str, effort: Any = _DEFAULT_EFFORT, current_registry: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Select only qualified, available bindings from the pinned provider policy."""
+    if not isinstance(role, str) or role not in _ROLES:
+        raise AuthoringError("REQUIRED_TIER_BINDING_UNAVAILABLE")
+    if registry.get("provider_states", {}).get(provider, {}).get("council_status") not in {"qualified", "partially_qualified"}:
+        raise AuthoringError("REQUIRED_TIER_BINDING_UNAVAILABLE")
+    if capability is None:
+        raise AuthoringError("CAPABILITY_REQUIRED")
+    if not _capability_valid(capability):
+        raise AuthoringError("SCHEMA_VALIDATION_FAILED")
+    if capability["provider"] != provider or capability["context_id"] != context_id:
+        raise AuthoringError("PROVIDER_RECEIPT_MISMATCH")
+    if not _capability_fresh(capability):
+        raise AuthoringError("CAPABILITY_STALE")
+    eligibility = registry if current_registry is None else current_registry
+    def order(item):
+        policy = item.get("selection", {})
+        return (policy.get("role", "primary") != "primary", policy.get("priority", 0), item["binding_id"])
+    same_role = sorted((item for item in registry["bindings"] if item["provider"] == provider and item["tier"] == role), key=order)
+    primaries = [item for item in same_role if item.get("selection", {}).get("role", "primary") == "primary"]
+    if not primaries:
+        raise AuthoringError("REQUIRED_TIER_BINDING_UNAVAILABLE")
+    primary = primaries[0]
+    higher = sorted((item for item in registry["bindings"] if item["provider"] == provider and _ROLE_RANK[item["tier"]] > _ROLE_RANK[role] and primary["binding_id"] in item.get("selection", {}).get("fallback_for", [])), key=lambda item: (_ROLE_RANK[item["tier"]], order(item)))
+    effort_invalid = False
+    role_unqualified = False
+    qualified = False
+    retired = False
+    for item in same_role + higher:
+        if item["status"] != "qualified":
+            continue
+        qualified = True
+        if _binding_retired_in(item, eligibility):
+            retired = True
+            continue
+        if not _binding_role_qualified(registry, item, role):
+            if item["model_id"] in capability["models"]:
+                role_unqualified = True
+            continue
+        selected_effort = _binding_reasoning(registry, item)["default_effort"] if effort is _DEFAULT_EFFORT else effort
+        if not _binding_effort_valid(registry, item, selected_effort):
+            effort_invalid = True
+            continue
+        if item["model_id"] not in capability["models"] or selected_effort not in capability["efforts"]:
+            continue
+        kind = "primary" if item["binding_id"] == primary["binding_id"] else "same_role_fallback" if item["tier"] == role else "higher_tier_fallback"
+        resolution = {"requested_binding_id": primary["binding_id"], "selected_tier": item["tier"], "kind": kind, "capability_receipt_sha256": capability["receipt_sha256"], "requested_effort": "binding_default" if effort is _DEFAULT_EFFORT else effort, "current_registry_sha256": eligibility["registry_sha256"], "eligibility_registry": eligibility}
+        return item, resolution
+    if effort_invalid:
+        raise AuthoringError("EFFORT_POLICY_INVALID")
+    if role_unqualified:
+        raise AuthoringError("ROLE_QUALIFICATION_REQUIRED")
+    if retired:
+        raise AuthoringError("BINDING_RETIRED")
+    raise AuthoringError("PROVIDER_RECEIPT_MISMATCH" if qualified else "REQUIRED_TIER_BINDING_UNAVAILABLE")
+
+
+def _resolution_matches(registry: dict[str, Any], payload: dict[str, Any], role: str, capability: dict[str, Any]) -> bool:
+    try:
+        requested_effort = payload["model_resolution"]["requested_effort"]
+        if requested_effort != "binding_default" and not _effort_valid(requested_effort):
+            return False
+        eligibility = payload["model_resolution"]["eligibility_registry"]
+        if not isinstance(eligibility, dict) or eligibility.get("schema_version") != registry.get("schema_version") or not _registry_valid(eligibility, eligibility) or payload["model_resolution"].get("current_registry_sha256") != eligibility["registry_sha256"]:
+            return False
+        selected, resolution = _resolve_binding(registry, payload["provider"], role, capability, capability["context_id"], _DEFAULT_EFFORT if requested_effort == "binding_default" else requested_effort, eligibility)
+        return _binding_effort_valid(registry, selected, payload["selected_effort"]) and payload.get("model_resolution") == resolution and all(payload.get(key) == selected[key] for key in ("binding_id", "binding_sha256", "model_id"))
+    except (AuthoringError, KeyError, TypeError, ValueError):
+        return False
+
+
+def _current_eligibility_registry(registry_version: str) -> dict[str, Any]:
+    """Load a validated safety overlay without replacing pinned qualification."""
+    if registry_version not in {"v2", "v3"}:
+        raise AuthoringError("CURRENT_REGISTRY_INVALID")
+    path = Path(__file__).resolve().parents[4] / f"standards/agent-model-registry.{registry_version}.yaml"
+    try:
+        current = _decode_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise AuthoringError("CURRENT_REGISTRY_INVALID") from exc
+    if not isinstance(current, dict) or current.get("registry_version") != registry_version or current.get("schema_version") != f"agent-council.model-registry/{registry_version}" or not _registry_valid(current, current):
+        raise AuthoringError("CURRENT_REGISTRY_INVALID")
+    return current
+
+
+def _binding_retired_in(binding: dict[str, Any], current: dict[str, Any]) -> bool:
+    return any(all(item[key] == binding[key] for key in ("binding_id", "provider", "model_id")) and item["status"] in {"retired", "revoked", "hard_expired"} for item in current["bindings"])
+
+
+def _require_current_binding_eligible(binding: dict[str, Any], registry_version: str = "v3") -> None:
+    """Current retirement may veto new execution, never rewrite pinned history."""
+    if _binding_retired_in(binding, _current_eligibility_registry(registry_version)):
+        raise AuthoringError("BINDING_RETIRED")
+
+
+def capture_capability(root: Path, provider: str, model_id: str, efforts: list[str | None], context_id: str, observed_at: str | None) -> dict[str, Any]:
+    if any(_public_text_problem(value) for value in (provider, model_id, context_id)) or not _capability_efforts_valid(efforts):
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
     observed_at = _utc_now() if observed_at is None else observed_at
     if _public_text_problem(observed_at):
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
-    try: age = abs((datetime.now(timezone.utc) - datetime.fromisoformat(observed_at.replace("Z", "+00:00")).astimezone(timezone.utc)).total_seconds())
+    try:
+        if datetime.fromisoformat(observed_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("offset required")
     except (TypeError, ValueError) as exc: raise AuthoringError("SCHEMA_VALIDATION_FAILED") from exc
-    if age > 86400: raise AuthoringError("CAPABILITY_STALE")
+    if not _capability_fresh({"observed_at": observed_at}): raise AuthoringError("CAPABILITY_STALE")
     state = _read_local_case(root)
     receipt = {"receipt_type": "provider_capability", "receipt_id": f"capability-{len(state['capabilities']) + 1:06d}", "provider": provider, "observed_at": observed_at, "context_id": context_id, "models": [model_id], "efforts": efforts}
     receipt["receipt_sha256"] = _digest(receipt)
@@ -1863,13 +2244,13 @@ _NOTICE_REASON = {
 }
 
 
-def _user_notice(model_id: str, effort: str, role: str, decision_kind: str) -> dict[str, str]:
+def _user_notice(model_id: str, effort: str | None, role: str, decision_kind: str, selected_tier: str | None = None) -> dict[str, Any]:
     """Return the exact public notice bound to a dispatch request.
 
     This is a transparency record for the outer agent to display. It proves
     that a notice was generated, not that any chat client rendered it.
     """
-    cost_class = _NOTICE_COST_CLASS.get(role)
+    cost_class = _NOTICE_COST_CLASS.get(selected_tier or role)
     reason = _NOTICE_REASON.get(decision_kind)
     if cost_class is None or reason is None:
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
@@ -1887,8 +2268,8 @@ def _user_notice(model_id: str, effort: str, role: str, decision_kind: str) -> d
     }
 
 
-def _user_notice_valid(notice: Any, model_id: str, effort: str, role: str, decision_kind: str) -> bool:
-    return isinstance(notice, dict) and notice == _user_notice(model_id, effort, role, decision_kind)
+def _user_notice_valid(notice: Any, model_id: str, effort: str | None, role: str, decision_kind: str, selected_tier: str | None = None) -> bool:
+    return isinstance(notice, dict) and notice == _user_notice(model_id, effort, role, decision_kind, selected_tier)
 
 
 def _method_contract(work_method: str, role: str, decision_kind: str) -> dict[str, str]:
@@ -1922,12 +2303,22 @@ def _method_contract_valid(plan: dict[str, Any]) -> bool:
     return all(plan.get(key) == value for key, value in expected.items())
 
 
-def dispatch_plan(root: Path, provider: str, role: str, context_id: str, effort: str = "high", decision_kind: str | None = None, qualification_run_id: str | None = None, work_method: str = "native") -> dict[str, Any]:
-    if any(_public_text_problem(value) for value in (provider, role, context_id, effort, work_method)) or (decision_kind is not None and _public_text_problem(decision_kind)) or (qualification_run_id is not None and _public_text_problem(qualification_run_id)):
+def dispatch_plan(root: Path, provider: str, role: str, context_id: str, effort: Any = _DEFAULT_EFFORT, decision_kind: str | None = None, qualification_run_id: str | None = None, work_method: str = "native") -> dict[str, Any]:
+    if any(_public_text_problem(value) for value in (provider, role, context_id, work_method)) or (effort is not _DEFAULT_EFFORT and not _effort_valid(effort)) or (decision_kind is not None and _public_text_problem(decision_kind)) or (qualification_run_id is not None and _public_text_problem(qualification_run_id)):
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
-    state = _read_local_case(root); binding = _binding(state, provider, role)
+    state = _read_local_case(root)
     if _candidate_identity_problem(state) or not _registry_valid(state["registry"], _local_identity(state)):
         raise AuthoringError("DISPATCH_PLAN_IDENTITY_MISMATCH")
+    resolution = None
+    if state["registry"]["schema_version"] == "agent-council.model-registry/v3":
+        current_registry = _current_eligibility_registry(state["registry"]["registry_version"])
+        binding, resolution = _resolve_binding(state["registry"], provider, role, state["capabilities"].get(context_id), context_id, effort, current_registry)
+    else:
+        binding = _binding(state, provider, role)
+        _require_current_binding_eligible(binding, state["registry"]["registry_version"])
+    default_effort = _binding_reasoning(state["registry"], binding)["default_effort"]
+    if effort is _DEFAULT_EFFORT:
+        effort = default_effort
     defaults = {"ultimate_intelligence": "routing", "operational_intelligence": "review", "technical_tactical_intelligence": "implementation", "worker_intelligence": "implementation"}
     decision_kind = decision_kind or defaults.get(role)
     allowed_kinds = {"ultimate_intelligence": {"routing", "design", "final", "native_forward"}, "operational_intelligence": {"review"}, "technical_tactical_intelligence": {"implementation"}, "worker_intelligence": {"implementation"}}
@@ -1943,15 +2334,25 @@ def dispatch_plan(root: Path, provider: str, role: str, context_id: str, effort:
         case_view = {"registry": state["registry"]}
         if any(not any(event["payload"].get("decision_kind") == decision and event["payload"].get("disposition") == "approved" and _authority_dispatch_valid(event, case_view, "ultimate_intelligence") for event in current) for decision in required_decisions):
             raise AuthoringError("ULTIMATE_GATE_RECEIPT_MISSING")
-    if effort not in _EFFORTS or _EFFORTS.index(effort) < _EFFORTS.index("high"):
+    if not _binding_effort_valid(state["registry"], binding, effort):
         raise AuthoringError("EFFORT_POLICY_INVALID")
-    if effort != "high":
+    if effort != default_effort:
         # Elevated effort needs an evidenced cause, represented by a prior system gate.
         causes = [e for e in state["events"] if e["record_type"] == "gate" and e["payload"].get("cause") in _ESCALATION_CAUSES]
         if not causes: raise AuthoringError("EFFORT_POLICY_INVALID")
+    if state["registry"]["schema_version"] == "agent-council.model-registry/v3":
+        capability = state["capabilities"].get(context_id)
+        if capability is None:
+            raise AuthoringError("CAPABILITY_REQUIRED")
+        if not _capability_valid(capability):
+            raise AuthoringError("SCHEMA_VALIDATION_FAILED")
+        if capability["provider"] != provider or binding["model_id"] not in capability["models"] or capability["context_id"] != context_id or effort not in capability["efforts"]:
+            raise AuthoringError("PROVIDER_RECEIPT_MISMATCH")
     nonce = hashlib.sha256(f"{state['case_id']}:{len(state['dispatch_plans'])}:{_utc_now()}".encode()).hexdigest()
-    notice = _user_notice(binding["model_id"], effort, role, decision_kind)
+    notice = _user_notice(binding["model_id"], effort, role, decision_kind, binding["tier"])
     request = {"plan_nonce": nonce, "identity": _dispatch_plan_identity(state), "provider": provider, "role": role, "model_id": binding["model_id"], "binding_id": binding["binding_id"], "binding_sha256": binding["binding_sha256"], "effort": effort, "context_id": context_id, "decision_kind": decision_kind, "qualification_run_id": qualification_run_id, "user_notice": notice} | method
+    if resolution is not None:
+        request["model_resolution"] = resolution
     if role in {"technical_tactical_intelligence", "worker_intelligence"}:
         request["packet_id"] = f"packet-{len(state['dispatch_plans']) + 1:06d}"
     plan = dict(request, request_sha256=_digest(request), consumed=False)
@@ -1977,6 +2378,9 @@ def _dispatch_capture_plan_problem(state: dict[str, Any], plan: Any, nonce: Any,
     if not isinstance(role, str) or role not in _ROLES:
         return "SCHEMA_VALIDATION_FAILED"
     request_keys = {"plan_nonce", "identity", "provider", "role", "model_id", "binding_id", "binding_sha256", "effort", "context_id", "decision_kind", "qualification_run_id", "user_notice", "work_method", "orchestrator_owner", "council_reentry", "execution_mode", "handoff_status"}
+    per_binding = state["registry"].get("schema_version") == "agent-council.model-registry/v3"
+    if per_binding:
+        request_keys.add("model_resolution")
     if role in {"technical_tactical_intelligence", "worker_intelligence"}:
         request_keys.add("packet_id")
     plan_keys = request_keys | {"request_sha256", "consumed"}
@@ -1986,14 +2390,17 @@ def _dispatch_capture_plan_problem(state: dict[str, Any], plan: Any, nonce: Any,
         return "SCHEMA_VALIDATION_FAILED"
     if plan.get("plan_nonce") != nonce or not _dispatch_plan_identity_valid(plan.get("identity")):
         return "DISPATCH_PLAN_IDENTITY_MISMATCH"
-    public_fields = ("provider", "model_id", "binding_id", "effort", "context_id", "decision_kind")
+    public_fields = ("provider", "model_id", "binding_id", "context_id", "decision_kind")
     if any(_public_text_problem(plan.get(field)) for field in public_fields) or not _sha(plan.get("binding_sha256")) or not _sha(plan.get("request_sha256")):
         return "SCHEMA_VALIDATION_FAILED"
     if role in {"technical_tactical_intelligence", "worker_intelligence"} and not _identifier(plan.get("packet_id")):
         return "SCHEMA_VALIDATION_FAILED"
-    if plan.get("decision_kind") not in {"routing", "design", "implementation", "review", "native_forward", "final"} or plan.get("effort") not in _EFFORTS or (plan.get("qualification_run_id") is not None and plan.get("qualification_run_id") not in _QUALIFICATION_GATES):
+    if plan.get("decision_kind") not in {"routing", "design", "implementation", "review", "native_forward", "final"} or not _effort_valid(plan.get("effort")) or (plan.get("qualification_run_id") is not None and plan.get("qualification_run_id") not in _QUALIFICATION_GATES):
         return "SCHEMA_VALIDATION_FAILED"
-    if not _user_notice_valid(plan.get("user_notice"), plan["model_id"], plan["effort"], role, plan["decision_kind"]) or not _method_contract_valid(plan):
+    resolution = plan.get("model_resolution")
+    if per_binding and (not isinstance(resolution, dict) or not isinstance(resolution.get("selected_tier"), str) or resolution["selected_tier"] not in _ROLES):
+        return "SCHEMA_VALIDATION_FAILED"
+    if not _user_notice_valid(plan.get("user_notice"), plan["model_id"], plan["effort"], role, plan["decision_kind"], resolution["selected_tier"] if per_binding else None) or not _method_contract_valid(plan):
         return "SCHEMA_VALIDATION_FAILED"
     allowed_kinds = {"ultimate_intelligence": {"routing", "design", "final", "native_forward"}, "operational_intelligence": {"review"}, "technical_tactical_intelligence": {"implementation"}, "worker_intelligence": {"implementation"}}
     if plan["decision_kind"] not in allowed_kinds[role] or (plan["decision_kind"] == "native_forward" and plan.get("qualification_run_id") not in _QUALIFICATION_GATES) or (plan["decision_kind"] != "native_forward" and plan.get("qualification_run_id") is not None):
@@ -2007,8 +2414,21 @@ def _dispatch_capture_plan_problem(state: dict[str, Any], plan: Any, nonce: Any,
             return "DISPATCH_PLAN_IDENTITY_MISMATCH"
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, _JsonDepthError, ValueError):
         return "DISPATCH_PLAN_IDENTITY_MISMATCH"
-    matches = [binding for binding in state["registry"].get("bindings", []) if isinstance(binding, dict) and binding.get("provider") == plan["provider"] and binding.get("tier") == role and binding.get("status") == "qualified" and binding.get("model_id") == plan["model_id"] and binding.get("binding_id") == plan["binding_id"] and binding.get("binding_sha256") == plan["binding_sha256"]]
-    return None if len(matches) == 1 else "DISPATCH_PLAN_IDENTITY_MISMATCH"
+    if per_binding:
+        capability = state["capabilities"].get(plan["context_id"])
+        if capability is None:
+            return "CAPABILITY_REQUIRED"
+        if not _capability_valid(capability):
+            return "SCHEMA_VALIDATION_FAILED"
+        if not _capability_fresh(capability):
+            return "CAPABILITY_STALE"
+        if not _resolution_matches(state["registry"], dict(plan, selected_effort=plan["effort"]), role, capability):
+            return "DISPATCH_PLAN_IDENTITY_MISMATCH"
+        current_registry = _current_eligibility_registry(state["registry"]["registry_version"])
+        if current_registry["registry_sha256"] != resolution["current_registry_sha256"]:
+            return "DISPATCH_PLAN_STALE"
+    matches = [binding for binding in state["registry"].get("bindings", []) if isinstance(binding, dict) and binding.get("provider") == plan["provider"] and (per_binding or binding.get("tier") == role) and binding.get("status") == "qualified" and binding.get("model_id") == plan["model_id"] and binding.get("binding_id") == plan["binding_id"] and binding.get("binding_sha256") == plan["binding_sha256"]]
+    return None if len(matches) == 1 and _binding_effort_valid(state["registry"], matches[0], plan["effort"]) else "DISPATCH_PLAN_IDENTITY_MISMATCH"
 
 
 def _prepared_local_event(state: dict[str, Any], record_type: str, payload: dict[str, Any], event_id: str) -> dict[str, Any]:
@@ -2024,9 +2444,9 @@ def _prepared_local_event(state: dict[str, Any], record_type: str, payload: dict
     return event
 
 
-def dispatch_capture(root: Path, provider: str, nonce: str, task_id: str, model_id: str, effort: str, context_id: str, output_ref: str, decision_kind: str = "implementation", disposition: str = "approved", qualification_run_id: str | None = None) -> dict[str, Any]:
-    public_values = (provider, nonce, task_id, model_id, effort, context_id, output_ref, decision_kind, disposition)
-    if any(_public_text_problem(value) for value in public_values) or (qualification_run_id is not None and _public_text_problem(qualification_run_id)):
+def dispatch_capture(root: Path, provider: str, nonce: str, task_id: str, model_id: str, effort: str | None, context_id: str, output_ref: str, decision_kind: str = "implementation", disposition: str = "approved", qualification_run_id: str | None = None) -> dict[str, Any]:
+    public_values = (provider, nonce, task_id, model_id, context_id, output_ref, decision_kind, disposition)
+    if any(_public_text_problem(value) for value in public_values) or not _effort_valid(effort) or (qualification_run_id is not None and _public_text_problem(qualification_run_id)):
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
     state = _read_local_case(root)
     plan = state["dispatch_plans"].get(nonce)
@@ -2045,11 +2465,14 @@ def dispatch_capture(root: Path, provider: str, nonce: str, task_id: str, model_
         raise AuthoringError("DISPATCH_PLAN_IDENTITY_MISMATCH")
     if provider != plan["provider"] or model_id != plan["model_id"] or effort != plan["effort"] or context_id != plan["context_id"] or decision_kind not in {"routing", "design", "implementation", "review", "native_forward", "final"} or disposition not in {"approved", "hold", "rejected"} or (qualification_run_id is not None and qualification_run_id not in _QUALIFICATION_GATES):
         raise AuthoringError("PROVIDER_RECEIPT_MISMATCH")
+    _require_current_binding_eligible(plan, state["registry"]["registry_version"])
     capability = state["capabilities"].get(context_id)
     if capability is None:
         raise AuthoringError("CAPABILITY_REQUIRED")
     if not _capability_valid(capability):
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
+    if not _capability_fresh(capability):
+        raise AuthoringError("CAPABILITY_STALE")
     if capability["provider"] != provider or capability["context_id"] != context_id or model_id not in capability["models"] or effort not in capability["efforts"]:
         raise AuthoringError("PROVIDER_RECEIPT_MISMATCH")
     receipt_id = f"dispatch-{len(state['events']) + 1:06d}"
@@ -2060,6 +2483,8 @@ def dispatch_capture(root: Path, provider: str, nonce: str, task_id: str, model_
     if not _dispatch_valid(receipt):
         raise AuthoringError("SCHEMA_VALIDATION_FAILED")
     payload = {"system_generated": True, "dispatch_receipt_id": receipt["receipt_id"], "dispatch_receipt_sha256": receipt["receipt_sha256"], "provider": provider, "binding_id": plan["binding_id"], "binding_sha256": plan["binding_sha256"], "requested_role": plan["role"], "decision_kind": decision_kind, "disposition": disposition, "receipt_provenance": "structural_only", "receipt_assurance": "structural_only", "model_id": model_id, "selected_effort": effort, "attested_effort": effort, "capability_receipt_id": capability["receipt_id"], "capability_receipt_sha256": capability["receipt_sha256"], "capability_context_id": capability["context_id"], "capability_models": capability["models"], "capability_efforts": capability["efforts"], "capability_observed_at": capability["observed_at"], "platform_task_id": task_id, "platform_context_id": context_id, "platform_output_ref": output_ref, "plan_nonce_sha256": _digest(nonce), "dispatch_request_sha256": plan["request_sha256"], "dispatch_plan_identity": plan["identity"], "work_method": plan["work_method"], "orchestrator_owner": plan["orchestrator_owner"], "council_reentry": plan["council_reentry"], "execution_mode": plan["execution_mode"]}
+    if "model_resolution" in plan:
+        payload["model_resolution"] = plan["model_resolution"]
     if "packet_id" in plan:
         payload["packet_id"] = plan["packet_id"]
     if qualification_run_id is not None:
@@ -2130,7 +2555,7 @@ def _authoring_document(state: dict[str, Any], case_root: Path, events: list[dic
         "cycle_id": state["cycle_id"],
         "route": state["route"],
         "identity": _local_identity(state),
-        "policy_bundle": {"policy_bundle_id": state["policy_bundle"]["policy_bundle_id"], "policy_sha256": state["policy_bundle"]["policy_sha256"]},
+        "policy_bundle": dict(state["policy_bundle"]) if state["registry"].get("schema_version") == "agent-council.model-registry/v3" else {"policy_bundle_id": state["policy_bundle"]["policy_bundle_id"], "policy_sha256": state["policy_bundle"]["policy_sha256"]},
         "engineering_candidate": state["engineering_candidate"],
         "registry": state["registry"],
         "provider_capability_receipt": capability,
@@ -2162,10 +2587,18 @@ def close_local_case(root: Path) -> dict[str, Any]:
         raise AuthoringError(issue)
     transaction = _prepare_event_transaction(state, [("closure", payload, f"event-{sequence:06d}-closure")])
     event = transaction["events"][0]
+    promotion_material = {}
+    if _requires_promotion(state["registry"]):
+        pins = state["policy_bundle"]["artifact_pins"]
+        promotion_material = _artifact_snapshot(root / "pinned", pins, pins)
     with tempfile.TemporaryDirectory(prefix="agent-council-close-") as temporary:
-        temporary_root = Path(temporary)
+        temporary_root = Path(temporary).resolve(strict=True)
         shutil.copytree(root / "events", temporary_root / "events", copy_function=shutil.copy2)
         shutil.copytree(root / "evidence", temporary_root / "evidence", copy_function=shutil.copy2)
+        # Evaluate the proposed closure against the same verified bytes as the
+        # live case. Never follow evidence links or consult the installed package.
+        for relative, raw in promotion_material.items():
+            _write_exclusive(temporary_root / "pinned" / relative, raw)
         _write_exclusive(temporary_root / "events" / f"{event['event_id']}.json", transaction["event_bytes"][0])
         document = _authoring_document(state, temporary_root, state["events"] + [event])
         evaluated = evaluate_contract_case(document)
@@ -2438,9 +2871,9 @@ def main(argv: list[str] | None = None) -> int:
     capability = commands.add_parser("capability-capture", help="record a current adapter capability observation")
     capability.add_argument("--case-root", required=True, type=Path); capability.add_argument("--project-root", required=True, type=Path); capability.add_argument("--provider", required=True); capability.add_argument("--model-id", required=True); capability.add_argument("--efforts-json", required=True); capability.add_argument("--context-id", required=True); capability.add_argument("--observed-at")
     plan = commands.add_parser("dispatch-plan", help="issue one single-use adapter dispatch plan")
-    plan.add_argument("--case-root", required=True, type=Path); plan.add_argument("--project-root", required=True, type=Path); plan.add_argument("--provider", required=True); plan.add_argument("--role", required=True); plan.add_argument("--context-id", required=True); plan.add_argument("--effort", default="high"); plan.add_argument("--decision-kind"); plan.add_argument("--qualification-run-id"); plan.add_argument("--work-method", default="native", choices=("native", "compound_engineering"))
+    plan.add_argument("--case-root", required=True, type=Path); plan.add_argument("--project-root", required=True, type=Path); plan.add_argument("--provider", required=True); plan.add_argument("--role", required=True); plan.add_argument("--context-id", required=True); plan.add_argument("--effort", default=_DEFAULT_EFFORT, type=lambda value: None if value == "null" else value); plan.add_argument("--decision-kind"); plan.add_argument("--qualification-run-id"); plan.add_argument("--work-method", default="native", choices=("native", "compound_engineering"))
     capture = commands.add_parser("dispatch-capture", help="capture exact native dispatch return fields")
-    capture.add_argument("--case-root", required=True, type=Path); capture.add_argument("--project-root", required=True, type=Path); capture.add_argument("--provider", required=True); capture.add_argument("--plan-nonce"); capture.add_argument("--task-id", required=True); capture.add_argument("--model-id", required=True); capture.add_argument("--effort", required=True); capture.add_argument("--context-id", required=True); capture.add_argument("--output-ref", required=True); capture.add_argument("--decision-kind", default="implementation"); capture.add_argument("--disposition", default="approved"); capture.add_argument("--qualification-run-id")
+    capture.add_argument("--case-root", required=True, type=Path); capture.add_argument("--project-root", required=True, type=Path); capture.add_argument("--provider", required=True); capture.add_argument("--plan-nonce"); capture.add_argument("--task-id", required=True); capture.add_argument("--model-id", required=True); capture.add_argument("--effort", required=True, type=lambda value: None if value == "null" else value); capture.add_argument("--context-id", required=True); capture.add_argument("--output-ref", required=True); capture.add_argument("--decision-kind", default="implementation"); capture.add_argument("--disposition", default="approved"); capture.add_argument("--qualification-run-id")
     close = commands.add_parser("close-case", help="atomically close only after passing gates and tests")
     close.add_argument("--case-root", required=True, type=Path); close.add_argument("--project-root", required=True, type=Path)
     cycle = commands.add_parser("cycle-start", help="start a changed engineering candidate cycle")

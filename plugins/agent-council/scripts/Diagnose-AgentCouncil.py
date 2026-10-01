@@ -12,6 +12,7 @@ from typing import Any
 
 sys.dont_write_bytecode = True
 from AgentCouncilTrace import inspect_trace
+from ClaudeQualificationHarness import current_release_binding
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +114,12 @@ def build_report(environ: dict[str, str]) -> dict[str, Any]:
     codex_claimed = bool(plugin_marker["nonempty"] or plugin_data_marker["nonempty"])
     claude_claimed = bool(claude_marker["nonempty"])
     observed_host = "ambiguous" if codex_claimed and claude_claimed else ("codex" if codex_claimed else ("claude_code" if claude_claimed else "unknown"))
+    try:
+        binding = current_release_binding()
+        current_identity = {"status": "observed", "behavioral_sha256": binding["behavioral_identity"]["behavioral_sha256"],
+                            "eval_suite_sha256": binding["eval_suite_sha256"], "qualification": "not_established_by_diagnostic"}
+    except (OSError, ValueError, KeyError) as error:
+        current_identity = {"status": "unavailable", "reason": str(error), "qualification": "unknown"}
     return {
         "schema_version": "agent-council.activation-diagnostic/v1",
         "guarantees": {"read_only": True, "network_used": False, "files_created": False, "locks_created": False,
@@ -120,8 +127,10 @@ def build_report(environ: dict[str, str]) -> dict[str, Any]:
         "package": {
             "root": str(ROOT),
             "root_present": ROOT.is_dir(),
+            "portable_manifest": read_manifest(ROOT / "plugin.json"),
             "codex_manifest": read_manifest(ROOT / ".codex-plugin" / "plugin.json"),
             "claude_manifest": read_manifest(ROOT / ".claude-plugin" / "plugin.json"),
+            "current_identity": current_identity,
         },
         "runtime": {"python_executable": sys.executable, "python_available": bool(sys.executable),
                     "bash_available": shutil.which("bash") is not None},

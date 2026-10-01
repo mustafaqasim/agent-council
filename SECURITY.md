@@ -25,4 +25,10 @@ Until a public security contact is published, do not create a public issue conta
 
 ## Supported environment
 
-Version 0.8.0 has local structural checks on macOS with Python 3 and Codex. Native provider execution and Windows filesystem-lock behaviour are not yet qualified for a public support claim.
+Version 0.9.0 has local deterministic checks on macOS with Python 3 and compatibility metadata for Codex and Claude Code. Fresh native release qualification, directory acceptance, and Windows filesystem-lock behaviour remain pending; local checks alone do not qualify these claims.
+
+## Local traces and evals
+
+Decision tracing is disabled unless explicitly enabled and uses bounded local metadata. It does not retain prompt or response text, prove agent compliance, or contact a telemetry service. Trace files remain local until removed by the user; no trace cleanup command is provided.
+
+Native plugin evals execute through the host and may consume paid model usage. The bundled runner requires `--no-publish`, disables artifact publication in every case, and keeps reports under ignored local output directories. It records behavior and suite hashes before execution and refuses a changed candidate. Review raw outputs for private data before any separately authorized disclosure. A command receipt proves provenance, not passing behavior or directory acceptance.

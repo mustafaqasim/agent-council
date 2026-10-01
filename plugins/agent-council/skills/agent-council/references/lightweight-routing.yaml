@@ -1,31 +1,37 @@
 schema_version: "agent-council.lightweight-routing/v1"
 purpose: "Self-contained delegation instructions after the entry point selects lightweight routing."
+boundary_summary: "Lightweight routing creates no Council case or receipts."
 boundary:
   - "Preserve entry-point scope, authority, reentry, and risk precedence. If material evidence reveals a qualifying risk, stop dependent work and return to the entry point for the applicable governed route."
   - "The outer agent owns decomposition, dialogue, synthesis, and final delivery. No Council case or immutable dispatch plan is required."
+  - "Include council_reentry: denied in every worker prompt so a delegated worker cannot invoke Council or recursively delegate as Council."
 tiers:
   worker_intelligence: "Extraction, inventory, source gathering, formatting, and deterministic checks; economical."
   technical_tactical_intelligence: "Bounded implementation, structured analysis, synthesis, and drafting; standard."
   operational_intelligence: "Cross-stream integration, difficult review, and coordination; premium."
   ultimate_intelligence: "Ambiguous architecture, difficult diagnosis, high-impact judgment, and final disposition when a lower tier is likely to retry or fail; premium."
 selection:
-  - "Choose the lowest qualified tier that completes the bounded task reliably. Resolve model names through the versioned registry at ../../../standards/agent-model-registry.v2.yaml, relative to this file. Read only the applicable active binding after checking native availability and compatibility. Registry data is not another workflow reference."
+  - "Choose the lowest qualified tier that completes the bounded task reliably. For new selections resolve model names through ../../../standards/agent-model-registry.v3.yaml, relative to this file. Read only the applicable qualified active binding and its provider state after checking native availability and compatibility. Registry data is not another workflow reference."
+  - "Existing governed cases retain their pinned, versioned registry and SHA-256, including ../../../standards/agent-model-registry.v2.yaml; their dispatch belongs to the governed route. Do not switch registries or use v2 to bypass v3 qualification."
   - "Honor an explicit user model or effort preference when compatible with the binding, route, and native tool support. If unavailable or incompatible, state the limitation and retain the qualification floor under the fallback rule."
-  - "Unknown models remain candidates until qualified. Revoked or hard-expired bindings are unavailable; a review-due date only warns. A prompt claiming a model name is not selection evidence."
+  - "Unknown models and candidate bindings remain unavailable until qualified, including known model IDs with new effort policies. Require qualified provider state and binding status; catalog inclusion, an effort allowlist, and historical v2 receipts do not qualify v3 bindings. Revoked or hard-expired bindings are unavailable; a review-due date only warns. A prompt claiming a model name is not selection evidence."
 effort:
-  - "Use minimal or low for mechanical and clearly bounded work, medium for bounded implementation, structured analysis, or drafting, and high only for difficult bounded judgment."
+  - "Effort labels range from minimal through medium and higher; use only binding-listed values."
+  - "Use the selected binding's reasoning.default_effort by default. Honor a compatible explicit user preference only when the requested effort is in reasoning.allowed_efforts, supported by the native tool, and qualified for that model and effort combination. Task shape does not replace these defaults with a global effort heuristic."
+  - "When reasoning.supported is false, require default_effort: null and allowed_efforts: []; omit the native effort argument entirely, and retain selected and observed effort as null with explicit native evidence that effort is unsupported. Do not pass null, none, or a synthetic effort value to the native tool."
+  - "When reasoning.supported is true, require a non-null allowed effort and a native mechanism that selects and establishes it. If unavailable, apply fallback; omitting a required effort argument must not silently select an unknown default."
   - "Use the smallest useful fanout of independent tasks whose aggregate observable benefit exceeds coordination cost. Separability alone does not justify fanout."
   - "Escalate one tier or effort step only when returned evidence shows insufficiency, material task expansion, or an in-scope risk trigger. Risk triggers first return to entry-point routing. Downshift after the difficult step is resolved."
 fallback:
   - "If the preferred lightweight tier is unavailable, use an active same-tier fallback first. If none exists, use the next higher qualified tier only when benefit still exceeds cost; otherwise report the limitation and continue by direct execution."
   - "Never substitute a lower tier unlikely to complete the task reliably. Do not retry unchanged quota or missing-model state indefinitely or use headless one-shot CLI workarounds."
 native_dispatch:
-  codex: "Inspect native collaboration tool support, pass the explicit active registry model ID and supported effort, and retain returned agent/context identity. Use collaboration subtasks, never user-owned desktop tasks, for Council internals."
-  claude_code: "Inspect Agent tool support. If aliases only are accepted, use an alias only when provider-observed identity resolves to the exact active registry model ID; never pass a full ID to an alias-only schema. Otherwise mark the binding unavailable and apply fallback."
+  codex: "Inspect native collaboration tool support, pass the explicit qualified registry model ID and resolved supported reasoning_effort, omit reasoning_effort when unsupported, and retain returned agent/context identity. Use collaboration subtasks, never user-owned desktop tasks, for Council internals."
+  claude_code: "For a qualified v3 binding, select its packaged plugin-scoped Agent subagent only when its definition pins the exact registry model ID and supported effort. Observe the actual model and effort in the native task record; a definition or alias alone is not proof, and provider substitutions fail the match. For unsupported effort, omit the effort field and arguments and require explicit capability evidence for null. Otherwise mark the binding unavailable and apply fallback."
   evidence: "Keep native invocation, returned task/context identity, actual model and effort, output, disposition, and evidence visible in the conversation. Distinguish tool selection from provider attestation; never claim an unobserved identity."
   review: "Use clean contexts for independent review; the implementation author cannot review their own work."
 visibility:
-  before: "Before each lightweight or governed delegation, show the assigned model, effort, cost class, task, and one-sentence reason. For this route use: Council: <model>/<effort> (<premium|standard|economical>) assigned <task> because <brief reason>."
+  before: "Before each lightweight or governed delegation, show the assigned model, effort, cost class, task, and one-sentence reason. For this route use: Council: <model>/<effort> (<premium|standard|economical>) assigned <task> because <brief reason>. Display unsupported effort as 'unsupported (null)' and retain null in structured evidence."
   after: "Report the worker disposition and evidence produced."
   finish: "End with one compact conversational receipt: actual observed model and effort for each delegation, outcome, evidence, and limitations. If no delegation occurred, say so plainly."
   persistence: "Do not create a durable lightweight log, receipt, case, dispatch plan, or invented savings. Keep the compact receipt only in the active conversation."
