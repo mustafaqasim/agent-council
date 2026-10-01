@@ -35,11 +35,11 @@ Agent Council does not read your remaining quota or predict the exact cost. It r
 
 ## Model routing examples
 
-In the published version, Codex can send routine work to Luna, implementation to Terra, review to Sol, and the hardest decisions to Astra.
+Version 0.9.0 is designed to send routine Codex work to Luna, implementation and review to Sol, and the hardest decisions to Astra.
 
-The current Claude Code candidates use Haiku 4.5 for routine work, Opus 5.5 at medium effort for implementation and operational review, and Opus 5.5 at high effort for the hardest decisions. They remain candidates until fresh qualification for this release passes.
+For Claude Code, it is designed to send routine work to Haiku 4.5, implementation and operational review to Opus 5.5 at medium effort, and the hardest decisions to Opus 5.5 at high effort.
 
-The available models still depend on your account and host. New model mappings in this branch remain candidates until native qualification passes.
+The available models depend on your account and host. Agent Council enables a mapping only after its exact model and effort setting pass native qualification.
 
 ## Example
 
@@ -173,15 +173,14 @@ Run the plugin checks from the plugin directory:
 
 ```sh
 cd plugins/agent-council
-python3 scripts/Test-AgentCouncilPlugin.py
-python3 scripts/Test-AgentCouncilUpdates.py
-python3 scripts/Test-AgentCouncilActivation.py
-python3 scripts/Test-ClaudeQualificationHarness.py
-python3 scripts/Test-RoutingPolicyPacketD.py
-python3 scripts/Test-AgentCouncilBenchmark.py
-for group in schema lifecycle stages routes provider authoring security dispatch-contracts; do
+for test in scripts/Test-*.py; do
+  python3 "$test"
+done
+for group in schema lifecycle stages routes provider authoring security dispatch-contracts registry-schema; do
   python3 scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py --group "$group"
 done
 ```
+
+The `registry-schema` group needs the optional `jsonschema` Python package.
 
 See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [MIGRATION.md](MIGRATION.md).
