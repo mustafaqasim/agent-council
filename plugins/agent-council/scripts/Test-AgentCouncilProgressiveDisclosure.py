@@ -34,8 +34,9 @@ class ProgressiveDisclosure(unittest.TestCase):
 
     def test_routes_load_only_their_own_instructions(self):
         text = (SKILL / "SKILL.md").read_text()
-        self.assertIn("Direct: after the conditional profile check, read no further Council reference", text)
-        self.assertIn("Lightweight: after the conditional profile check, read only references/lightweight-routing.yaml", text)
+        outcomes = text.split("outcomes:\n", 1)[1].split("\ndisclosure:", 1)[0]
+        self.assertIn("After the conditional profile check, read no more Council references", outcomes.split("  direct:", 1)[1].split("\n", 1)[0])
+        self.assertIn("After the conditional profile check, read only references/lightweight-routing.yaml", outcomes.split("  lightweight:", 1)[1].split("\n", 1)[0])
         self.assertIn("Governed: read references/governed-workflow.yaml", text)
         self.assertIn("block the affected work", text)
         self.assertNotIn("references/model-adapters.yaml", text)
@@ -58,7 +59,7 @@ class ProgressiveDisclosure(unittest.TestCase):
             with self.subTest(otherwise=provisional_route):
                 self.assertIn("apply its route floors even when the built-in rules would choose direct or lightweight", profile_check)
                 self.assertIn("Profiles may raise risk floors or add gates, never lower them or expand authority", profile_check)
-                self.assertIn("after the conditional profile check", text.split(provisional_route.capitalize() + ":", 1)[1].split("\n", 1)[0])
+                self.assertIn("After the conditional profile check", text.split("  " + provisional_route + ":", 1)[1].split("\n", 1)[0])
         self.assertIn("Hold the affected route", profile_check)
         self.assertIn("missing or unreadable selected profiles", profile_check)
         self.assertIn("unknown relevant semantics", profile_check)

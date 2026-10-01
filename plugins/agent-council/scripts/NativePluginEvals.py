@@ -153,7 +153,116 @@ def preserve_traces(aggregate, result_directory):
         (destination / (arm_name + ".jsonl")).write_bytes(source.read_bytes())
 
 
-def check_native_traces(aggregate, result_directory, preparation, receipt, prior_completed):
+def session_start_output(package):
+    """Read the pinned hook's literal context without executing package code."""
+    source = (package / "hooks/agent-council-routing.sh").read_text()
+    match = re.search(r'if \[ "\$event" = "SessionStart" \]; then\n  msg="([^"\\$`]+)"\nelse', source)
+    if match is None:
+        raise ValueError("native SessionStart context is not a supported pinned literal")
+    return json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                              "additionalContext": match[1]}}) + "\n"
+
+
+def check_native_prefix(prefix, session, package, allow_package_context=False):
+    """Accept only paired startup hook records, not pre-init conversation.
+
+    Hook output is matched to the pinned package, not authenticated as a host
+    event. Original bytes remain in the sealed trace and are never filtered.
+    """
+    common = {"type", "subtype", "hook_id", "hook_name", "hook_event", "session_id", "uuid"}
+    response = {"exit_code", "outcome", "output", "stdout", "stderr"}
+    started, pending, event_ids = set(), set(), set()
+    expected_output = None
+    for event in prefix:
+        subtype = event.get("subtype")
+        if (event.get("type") != "system" or subtype not in {"hook_started", "hook_response"}
+                or set(event) != common | (response if subtype == "hook_response" else set())
+                or event.get("hook_event") != "SessionStart"
+                or event.get("hook_name") != "SessionStart:startup"
+                or event.get("session_id") != session):
+            raise ValueError("native pre-init event is not exact SessionStart metadata")
+        for field in ("hook_id", "uuid"):
+            value = event[field]
+            if not isinstance(value, str) or str(uuid.UUID(value)) != value:
+                raise ValueError("native SessionStart identity invalid")
+        if event["uuid"] in event_ids:
+            raise ValueError("native SessionStart event identity repeated")
+        event_ids.add(event["uuid"])
+        hook = event["hook_id"]
+        if subtype == "hook_started":
+            if hook in started:
+                raise ValueError("native SessionStart hook repeated")
+            started.add(hook)
+            pending.add(hook)
+            continue
+        if hook not in pending:
+            raise ValueError("native SessionStart response has no pending start")
+        pending.remove(hook)
+        if (type(event["exit_code"]) is not int or event["exit_code"] != 0
+                or event["outcome"] != "success" or event["stderr"] != ""
+                or not isinstance(event["stdout"], str) or event["stdout"] != event["output"]):
+            raise ValueError("native SessionStart response unsuccessful or malformed")
+        if event["output"]:
+            if not allow_package_context:
+                raise ValueError("native without-plugin SessionStart contains package context")
+            if expected_output is None:
+                expected_output = session_start_output(package)
+            if event["output"] != expected_output:
+                raise ValueError("native SessionStart output differs from pinned context")
+    if pending:
+        raise ValueError("native SessionStart hook has no response before init")
+
+
+def check_native_inventory(initial, arm_name, package):
+    """Match reported inventory to the ablation arm, without authenticating it."""
+    inventories = {}
+    for field in ("agents", "skills", "plugins"):
+        entries = initial.get(field)
+        if not isinstance(entries, list) or len(entries) > 512:
+            raise ValueError("native init " + field + " inventory missing or malformed")
+        if field != "plugins":
+            if any(not isinstance(entry, str) or not entry or entry != entry.strip()
+                   or len(entry) > 256 for entry in entries) or len(set(entries)) != len(entries):
+                raise ValueError("native init " + field + " inventory malformed or duplicated")
+        else:
+            for entry in entries:
+                if (not isinstance(entry, dict) or not {"name", "path", "source"} <= set(entry)
+                        or set(entry) - {"name", "path", "source", "version"}
+                        or any(not isinstance(value, str) or not value or value != value.strip()
+                               or len(value) > 4096 for value in entry.values())):
+                    raise ValueError("native init plugins inventory malformed")
+            if len({entry["name"] for entry in entries}) != len(entries):
+                raise ValueError("native init plugins inventory duplicated")
+        inventories[field] = entries
+    expected_agents = {"agent-council:council-" + tier
+                       for tier in ("worker", "technical", "operational", "ultimate")}
+    council_agents = {name for name in inventories["agents"]
+                      if name.startswith("agent-council:") or name in
+                      {"council-worker", "council-technical", "council-operational", "council-ultimate"}}
+    council_skills = {name for name in inventories["skills"]
+                      if name == "agent-council" or name.startswith("agent-council:")}
+    package_path = package.resolve()
+    council_plugins = [entry for entry in inventories["plugins"]
+                       if entry["name"] == "agent-council" or entry["source"].startswith("agent-council@")
+                       or (Path(entry["path"]).is_absolute() and Path(entry["path"]).resolve() == package_path)]
+    if arm_name == "without":
+        if council_agents or council_skills or council_plugins:
+            raise ValueError("native without-plugin inventory contains Council")
+        return
+    if arm_name != "with":
+        raise ValueError("native inventory arm invalid")
+    if (council_agents != expected_agents or council_skills != {"agent-council:agent-council"}
+            or len(council_plugins) != 1):
+        raise ValueError("native with-plugin Council inventory missing or changed")
+    plugin = council_plugins[0]
+    expected_version = json.loads((package / ".claude-plugin/plugin.json").read_text())["version"]
+    if (plugin["name"] != "agent-council" or plugin["source"] != "agent-council@inline"
+            or not Path(plugin["path"]).is_absolute() or Path(plugin["path"]).resolve() != package_path
+            or plugin.get("version") != expected_version):
+        raise ValueError("native with-plugin identity differs from verified package")
+
+
+def check_native_traces(aggregate, result_directory, preparation, receipt, prior_completed, package=None):
     """Return native identities only after validating the retained stream events."""
     prepared = native_time(preparation.get("recorded_at"))
     completed = native_time(receipt.get("completed_at"))
@@ -180,12 +289,16 @@ def check_native_traces(aggregate, result_directory, preparation, receipt, prior
             raise ValueError("native trace events invalid")
         initial = [event for event in events if event.get("type") == "system" and event.get("subtype") == "init"]
         results = [event for event in events if event.get("type") == "result"]
-        if len(initial) != 1 or len(results) != 1 or events[0] != initial[0] or events[-1] != results[0]:
+        if len(initial) != 1 or len(results) != 1 or events[-1] != results[0]:
             raise ValueError("native trace init or terminal result missing or repeated")
         session = initial[0].get("session_id")
         if not isinstance(session, str) or str(uuid.UUID(session)) != session or \
                 {event.get("session_id") for event in events} != {session}:
             raise ValueError("native trace session identity inconsistent")
+        verified_package = PLUGIN if package is None else package
+        check_native_prefix(events[:events.index(initial[0])], session, verified_package,
+                            allow_package_context=arm_name == "with")
+        check_native_inventory(initial[0], arm_name, verified_package)
         if initial[0].get("model") != CAMPAIGN_MODEL:
             raise ValueError("native trace resolved model mismatch")
         assistants = [event for event in events if event.get("type") == "assistant" and
@@ -339,7 +452,8 @@ def campaign_receipts(directory, manifest):
             errors.extend(slot["id"] + ": " + item for item in check_slot(
                 aggregate, slot, manifest, directory / "verified-package"))
             identities, trace_sources, response_ids, started, completed = check_native_traces(
-                aggregate, path / "result", preparation, receipt, prior_completed)
+                aggregate, path / "result", preparation, receipt, prior_completed,
+                directory / "verified-package")
             if len(set(identities)) != 2 or sessions.intersection(identities) or \
                     len(set(trace_sources)) != 2 or sources.intersection(trace_sources) or started in starts:
                 errors.append(slot["id"] + ": native run or arm replay detected")
@@ -577,7 +691,7 @@ def build_command(mode, case=None):
         names = {item["name"] for item in load_suite(EVAL_DIR)["cases"]}
         if case not in names:
             raise ValueError("iterate requires one exact existing --case name")
-        command += ["--case", case, "--runs", "1", "--ablation", "none"]
+        command += ["--case", case, "--runs", "1", "--ablation", "none", "--keep-temp"]
     elif mode == "release":
         command += ["--runs", "3", "--ablation", "with-without", "--max-cost-usd", "20"]
     elif mode == "probe":
@@ -629,7 +743,7 @@ def validate_execution_command(command, mode):
         raise ValueError("native eval command must use the native eval entry point")
     if Path(command[3]).resolve() != PLUGIN.resolve():
         raise ValueError("native eval command must target the verified package")
-    switches = {"--no-publish", "--trust-plugin", "--no-scaffold"}
+    switches = {"--no-publish", "--trust-plugin", "--no-scaffold", "--keep-temp"}
     values = {"--threshold", "--concurrency", "--model", "--output-dir",
               "--runs", "--ablation", "--max-cost-usd", "--case"}
     observed = {}

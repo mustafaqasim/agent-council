@@ -7,6 +7,7 @@ purpose: "Outer agent executes; Council chooses direct work, delegation, or risk
 authority:
   - "Preserve user scope and authority first. council_reentry: denied is absolute: do not invoke Council, select a route, create a case, or delegate as Council; return only requested evidence to the owning case."
   - "Diagnosis authorizes diagnosis only: read-only inspection and a recommended repair. Planning authorizes planning only. Neither authorizes implementation or mutation. Council grants no destructive, publication, credential, third-party, production, or withheld authority."
+delegation_guard: "Before delegation, read selected-route policy and registry; verify a qualified binding. Every child prompt: council_reentry: denied. Claude: use its packaged plugin-scoped Agent; no generic fallback. If reads are forbidden, missing or unreadable, hold affected dispatch, report paths, continue independent authorized work; never invent qualification."
 check:
   - "Before substantive engineering, debugging, implementation, planning, review, research, analysis, strategy, business, or document work, perform a cheap read-only applicability check. Explicit invocation guarantees the applicability check, not delegation or automatic case creation."
   - "Apply this fixed precedence: user scope, authority, and reentry; qualifying risk; then economics. A risk trigger overrides task size, simplicity, and delegation savings. Select the highest applicable risk route."
@@ -27,16 +28,13 @@ economics:
 outcomes:
   instruction: "Show the selected outcome before substantive work."
   direct: "Council check: direct execution; delegation overhead exceeds the likely benefit. After the conditional profile check, read no more Council references; execute within scope, say no delegation occurred, and create no case or durable receipt."
-  lightweight: "Council check: lightweight routing; delegating <brief task shape>. After the conditional profile check, read only references/lightweight-routing.yaml; create no case or receipts."
+  lightweight: "Council check: lightweight routing; delegating <brief task shape>. After the conditional profile check, read only references/lightweight-routing.yaml. Lightweight routing creates no Council case or receipts."
   governed: "Council check: governed case <R1|R2|R3>; <qualifying risk>."
 disclosure:
-  - "Direct: after the conditional profile check, read no further Council reference; execute within scope, say no delegation occurred, create no case or receipt."
-  - "Lightweight: after the conditional profile check, read only references/lightweight-routing.yaml before delegation; create no case or durable receipt."
   - "Governed: read references/governed-workflow.yaml before case work, then its named supporting references only when their stated condition applies."
   - "If a required reference is missing or unreadable, block the affected work, report its path, and continue only independent authorized work. Never invent rules or silently downgrade."
 selection_boundary:
-  - "Use v3 bindings for new selections; existing cases stay pinned, including v2. Use qualified default effort unless a compatible preference applies. Unsupported effort is null and omitted natively. Candidates are unavailable until qualified. Direct needs no catalog."
-  lightweight: "Lightweight routing creates no Council case or receipts."
+  - "New selections use v3 bindings; existing cases stay pinned, including v2. Use qualified default effort unless a compatible preference applies. Unsupported effort is null and omitted natively. Candidates are unavailable until qualified. Direct needs no catalog."
 composition:
   - "Council composes above the applicable domain skill; it does not replace that skill. Council governs who works and the evidence required; the domain skill supplies the method within existing authority."
   - "Native standalone execution is primary. Compound Engineering is optional, never an activation prerequisite or a dependency for normal Council operation. Use its integration instructions only on the governed route when available and relevant; otherwise use the native or domain method."

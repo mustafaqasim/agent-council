@@ -155,9 +155,41 @@ class NativeEvalTests(unittest.TestCase):
         for flag, value in [("--runs", "1"), ("--ablation", "none"), ("--case", "trivial-negative")]:
             self.assertEqual(command[command.index(flag) + 1], value)
         self.assertIn("--no-publish", command)
+        self.assertEqual(command.count("--keep-temp"), 1)
+        native.validate_execution_command(command, "iterate")
         self.assertNotIn("--publish-report", command)
         output = Path(command[command.index("--output-dir") + 1])
         self.assertTrue(output.is_relative_to(native.EVAL_DIR / "results"))
+
+    def test_iteration_trace_retention_cannot_be_removed_or_duplicated(self):
+        with tempfile.TemporaryDirectory(dir=native.PLUGIN) as temporary:
+            command = native.build_command("iterate", case="trivial-negative")
+            command[command.index("--output-dir") + 1] = str(Path(temporary) / "rejected-iteration")
+            changed_commands = (
+                [value for value in command if value != "--keep-temp"],
+                [*command, "--keep-temp"],
+            )
+            with patch.object(native.subprocess, "run") as run:
+                run.return_value.returncode = 1
+                for changed in changed_commands:
+                    with self.subTest(command=changed), self.assertRaises(ValueError):
+                        native.execute(changed, "iterate")
+                run.assert_not_called()
+
+    def test_failed_iteration_requests_trace_retention_without_claiming_qualification(self):
+        with tempfile.TemporaryDirectory(dir=native.PLUGIN) as temporary:
+            output = Path(temporary) / "failed-iteration"
+            command = native.build_command("iterate", case="trivial-negative")
+            command[command.index("--output-dir") + 1] = str(output)
+            with patch.object(native.subprocess, "run") as run:
+                run.return_value.returncode = 1
+                self.assertEqual(native.execute(command, "iterate"), 1)
+                run.assert_called_once_with(command, cwd=native.PLUGIN)
+                self.assertEqual(run.call_args.args[0].count("--keep-temp"), 1)
+            receipt = json.loads((output / "release-run.json").read_text())
+            self.assertEqual(receipt["status"], "command_failed")
+            self.assertEqual(receipt["command"], command)
+            self.assertFalse(receipt["qualification_claimed"])
 
     def test_iteration_requires_exact_case(self):
         for case in [None, "*", "missing-case"]:
@@ -171,12 +203,31 @@ class NativeEvalTests(unittest.TestCase):
         self.assertIn("--no-publish", command)
         self.assertNotIn("--case", command)
 
+    def native_inventory(self, package, arm):
+        inventory = {"agents": ["claude", "Explore", "general-purpose", "Plan", "statusline-setup"],
+                     "skills": ["dataviz", "update-config", "verify", "debug", "plugin-authoring",
+                                "fixture-domain:source-check"],
+                     "plugins": [{"name": "cc-plugin-agents-md", "path": "builtin",
+                                  "source": "cc-plugin-agents-md@builtin"},
+                                 {"name": "fixture-domain", "path": str(package / "evals/domain-skill-coexistence/fixture-domain"),
+                                  "source": "fixture-domain@inline", "version": "1.0.0"}]}
+        if arm == "with":
+            inventory["agents"] += ["agent-council:council-" + tier
+                                    for tier in ("operational", "technical", "ultimate", "worker")]
+            inventory["skills"].append("agent-council:agent-council")
+            inventory["plugins"].append({"name": "agent-council", "path": str(package),
+                                          "source": "agent-council@inline", "version": "0.9.0"})
+        return inventory
+
     def campaign_fixture(self, root):
         slots = native.campaign_slots([case["name"] for case in self.suite["cases"]])
         manifest = {"schema_version": native.CAMPAIGN_SCHEMA, "model": native.CAMPAIGN_MODEL,
                     "cost_cap_usd": "20", "cli_version": "Claude Code 2.1.281", "slots": slots,
                     "created_at": "2026-09-30T23:59:59+00:00"}
         (root / "verified-package").mkdir()
+        plugin_manifest = root / "verified-package/.claude-plugin/plugin.json"
+        plugin_manifest.parent.mkdir()
+        plugin_manifest.write_text(json.dumps({"name": "agent-council", "version": "0.9.0"}))
         for slot in slots:
             index = slots.index(slot)
             base = datetime(2026, 10, 1, tzinfo=timezone.utc) + timedelta(minutes=index)
@@ -209,7 +260,8 @@ class NativeEvalTests(unittest.TestCase):
                 aggregate["cases"][0]["arms"][arm_name][0].update(
                     startedAt=stamp(2 + arm_index * 10), tracePath=f"/private/tmp/e-{session}/out/trace.jsonl")
                 events = [
-                    {"type": "system", "subtype": "init", "model": native.CAMPAIGN_MODEL, "session_id": session},
+                    {"type": "system", "subtype": "init", "model": native.CAMPAIGN_MODEL, "session_id": session,
+                     **self.native_inventory(root / "verified-package", arm_name)},
                     {"type": "assistant", "parent_tool_use_id": None, "session_id": session,
                      "timestamp": stamp(3 + arm_index * 10), "request_id": "req_" + session,
                      "message": {"model": native.CAMPAIGN_MODEL, "id": "msg_" + session}},
@@ -242,6 +294,169 @@ class NativeEvalTests(unittest.TestCase):
                        output_sha256=native.output_hashes(path / "result"),
                        preparation_sha256=native.digest_bytes((path / "preparation.json").read_bytes()))
         (path / "receipt.json").write_text(json.dumps(receipt))
+
+    def startup_prefix(self, session):
+        starts = [{"type": "system", "subtype": "hook_started", "hook_id": str(native.uuid.uuid4()),
+                   "hook_name": "SessionStart:startup", "hook_event": "SessionStart",
+                   "session_id": session, "uuid": str(native.uuid.uuid4())} for _ in range(2)]
+        responses = [{**event, "subtype": "hook_response", "uuid": str(native.uuid.uuid4()),
+                      "exit_code": 0, "outcome": "success", "output": "", "stdout": "", "stderr": ""}
+                     for event in starts]
+        responses[0]["stdout"] = responses[0]["output"] = native.session_start_output(native.PLUGIN)
+        return starts + responses
+
+    def test_campaign_accepts_paired_native_startup_prefix_without_changing_trace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            hook = root / "verified-package/hooks/agent-council-routing.sh"
+            hook.parent.mkdir()
+            hook.write_bytes((native.PLUGIN / "hooks/agent-council-routing.sh").read_bytes())
+            path = root / "slots" / manifest["slots"][0]["id"]
+            trace = path / "result/traces/with.jsonl"
+            rows = [json.loads(line) for line in trace.read_text().splitlines()]
+            prefix = self.startup_prefix(rows[0]["session_id"])
+            trace.write_text("\n".join(json.dumps(row) for row in prefix + rows))
+            original = trace.read_bytes()
+            self.reseal_campaign_slot(path)
+            self.assertEqual(native.campaign_receipts(root, manifest)[1], [])
+            self.assertEqual(trace.read_bytes(), original)
+            # Both interleaved and consecutive start/response pairs are native ordering.
+            native.check_native_prefix([prefix[0], prefix[2], prefix[1], prefix[3]],
+                                       rows[0]["session_id"], native.PLUGIN, allow_package_context=True)
+
+    def test_campaign_rejects_resealed_without_plugin_hook_context_but_accepts_empty_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            hook = root / "verified-package/hooks/agent-council-routing.sh"
+            hook.parent.mkdir()
+            hook.write_bytes((native.PLUGIN / "hooks/agent-council-routing.sh").read_bytes())
+            path = root / "slots" / manifest["slots"][-1]["id"]
+            trace = path / "result/traces/without.jsonl"
+            rows = [json.loads(line) for line in trace.read_text().splitlines()]
+            prefix = self.startup_prefix(rows[0]["session_id"])
+            prefix[2]["stdout"] = prefix[2]["output"] = ""
+            trace.write_text("\n".join(json.dumps(row) for row in prefix + rows))
+            self.reseal_campaign_slot(path)
+            self.assertEqual(native.campaign_receipts(root, manifest)[1], [])
+            prefix[2]["stdout"] = prefix[2]["output"] = native.session_start_output(native.PLUGIN)
+            trace.write_text("\n".join(json.dumps(row) for row in prefix + rows))
+            self.reseal_campaign_slot(path)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("without-plugin SessionStart contains package context", errors[0])
+
+    def test_campaign_rejects_resealed_arm_inventory_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            package = root / "verified-package"
+            path = root / "slots" / manifest["slots"][-1]["id"]
+            self.assertEqual(native.campaign_receipts(root, manifest)[1], [])
+            council = self.native_inventory(package, "with")["plugins"][-1]
+            mutations = {
+                "with_wrong_path": ("with", lambda value: value["plugins"][-1].update(path="/private/tmp/other-package")),
+                "with_relative_path": ("with", lambda value: value["plugins"][-1].update(path="verified-package")),
+                "with_wrong_source": ("with", lambda value: value["plugins"][-1].update(source="agent-council@cache")),
+                "with_wrong_version": ("with", lambda value: value["plugins"][-1].update(version="0.0.0")),
+                "with_missing_plugin": ("with", lambda value: value["plugins"].pop()),
+                "with_duplicate_council": ("with", lambda value: value["plugins"].append(copy.deepcopy(council))),
+                "with_missing_agent": ("with", lambda value: value["agents"].pop()),
+                "with_extra_council_agent": ("with", lambda value: value["agents"].append("agent-council:unknown")),
+                "with_generic_substitution": ("with", lambda value: value.update(agents=["general-purpose"])),
+                "with_missing_skill": ("with", lambda value: value["skills"].pop()),
+                "with_unscoped_skill": ("with", lambda value: value["skills"].append("agent-council")),
+                "without_plugin": ("without", lambda value: value["plugins"].append(copy.deepcopy(council))),
+                "without_plugin_source": ("without", lambda value: value["plugins"].append(
+                    {**council, "name": "other-name", "path": "/private/tmp/other-package"})),
+                "without_exact_package_path": ("without", lambda value: value["plugins"].append(
+                    {**council, "name": "other-name", "source": "other-name@inline"})),
+                "without_scoped_agent": ("without", lambda value: value["agents"].append("agent-council:council-worker")),
+                "without_unscoped_agent": ("without", lambda value: value["agents"].append("council-worker")),
+                "without_scoped_skill": ("without", lambda value: value["skills"].append("agent-council:agent-council")),
+                "without_unscoped_skill": ("without", lambda value: value["skills"].append("agent-council")),
+            }
+            for arm in ("with", "without"):
+                for field in ("agents", "skills", "plugins"):
+                    mutations[arm + "_missing_" + field] = (arm, lambda value, field=field: value.pop(field))
+                    mutations[arm + "_not_list_" + field] = (arm, lambda value, field=field: value.update({field: "bad"}))
+                    mutations[arm + "_bad_entry_" + field] = (arm, lambda value, field=field: value[field].append(None))
+                    mutations[arm + "_duplicate_" + field] = (arm, lambda value, field=field: value[field].append(
+                        copy.deepcopy(value[field][0])))
+                for field in ("name", "path", "source", "version"):
+                    mutations[arm + "_bad_plugin_" + field] = (arm, lambda value, field=field: value["plugins"][0].update({field: None}))
+                mutations[arm + "_extra_plugin_field"] = (arm, lambda value: value["plugins"][0].update(content="unexpected"))
+            originals = {arm: (path / "result/traces" / (arm + ".jsonl")).read_bytes()
+                         for arm in ("with", "without")}
+            for name, (arm, mutate) in mutations.items():
+                with self.subTest(name=name):
+                    trace = path / "result/traces" / (arm + ".jsonl")
+                    rows = [json.loads(line) for line in originals[arm].splitlines()]
+                    mutate(rows[0])
+                    trace.write_text("\n".join(json.dumps(row) for row in rows))
+                    self.reseal_campaign_slot(path)
+                    errors = native.campaign_receipts(root, manifest)[1]
+                    self.assertEqual(len(errors), 1, errors)
+                    self.assertIn("invalid sealed output: native", errors[0])
+                    trace.write_bytes(originals[arm])
+            self.reseal_campaign_slot(path)
+            self.assertEqual(native.campaign_receipts(root, manifest)[1], [])
+
+    def test_native_startup_prefix_rejects_content_schema_identity_and_order_changes(self):
+        session = str(native.uuid.uuid4())
+        mutations = {
+            "assistant": lambda rows: rows.insert(0, {"type": "assistant", "session_id": session}),
+            "user": lambda rows: rows.insert(0, {"type": "user", "session_id": session}),
+            "tool": lambda rows: rows.insert(0, {"type": "tool_progress", "session_id": session}),
+            "conversation_after_metadata": lambda rows: rows.insert(3, {"type": "assistant", "session_id": session}),
+            "other_system": lambda rows: rows[0].update(subtype="thinking_tokens"),
+            "other_phase": lambda rows: rows[0].update(hook_event="UserPromptSubmit"),
+            "resume_phase": lambda rows: rows[0].update(hook_name="SessionStart:resume"),
+            "foreign_session": lambda rows: rows[0].update(session_id=str(native.uuid.uuid4())),
+            "bad_hook_id": lambda rows: rows[0].update(hook_id="not-a-uuid"),
+            "bad_event_id": lambda rows: rows[0].update(uuid="not-a-uuid"),
+            "extra_key": lambda rows: rows[0].update(content="hidden conversation"),
+            "missing_key": lambda rows: rows[0].pop("hook_name"),
+            "response_before_start": lambda rows: rows.reverse(),
+            "missing_response": lambda rows: rows.pop(),
+            "missing_start": lambda rows: rows.pop(0),
+            "foreign_response": lambda rows: rows[2].update(hook_id=str(native.uuid.uuid4())),
+            "duplicate_start": lambda rows: rows.insert(1, {**rows[0], "uuid": str(native.uuid.uuid4())}),
+            "duplicate_response": lambda rows: rows.append({**rows[2], "uuid": str(native.uuid.uuid4())}),
+            "duplicate_event_id": lambda rows: rows[2].update(uuid=rows[0]["uuid"]),
+            "failed_exit": lambda rows: rows[2].update(exit_code=1),
+            "boolean_exit": lambda rows: rows[2].update(exit_code=False),
+            "failed_outcome": lambda rows: rows[2].update(outcome="error"),
+            "stderr": lambda rows: rows[2].update(stderr="warning"),
+            "output_mismatch": lambda rows: rows[2].update(output=""),
+            "arbitrary_context": lambda rows: rows[2].update(output="untrusted", stdout="untrusted"),
+            "null_content": lambda rows: rows[2].update(output=None, stdout=None),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                rows = self.startup_prefix(session)
+                mutate(rows)
+                with self.assertRaises(ValueError):
+                    native.check_native_prefix(rows, session, native.PLUGIN, allow_package_context=True)
+
+    def test_startup_context_comes_only_from_pinned_literal_without_execution(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary)
+            hook = package / "hooks/agent-council-routing.sh"
+            hook.parent.mkdir()
+            hook.write_text('if [ "$event" = "SessionStart" ]; then\n  msg="Pinned test context."\nelse\n')
+            with patch.object(native.subprocess, "run") as run:
+                self.assertEqual(json.loads(native.session_start_output(package)),
+                                 {"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                                         "additionalContext": "Pinned test context."}})
+                run.assert_not_called()
+            rows = self.startup_prefix(str(native.uuid.uuid4()))
+            with self.assertRaisesRegex(ValueError, "differs from pinned"):
+                native.check_native_prefix(rows, rows[0]["session_id"], package, allow_package_context=True)
+            hook.write_text('if [ "$event" = "SessionStart" ]; then\n  msg="$DYNAMIC_CONTEXT"\nelse\n')
+            with self.assertRaisesRegex(ValueError, "supported pinned literal"):
+                native.session_start_output(package)
 
     def test_campaign_rejects_replayed_native_output_even_when_resealed(self):
         with tempfile.TemporaryDirectory() as temporary:
