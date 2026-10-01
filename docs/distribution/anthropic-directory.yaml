@@ -85,7 +85,7 @@
   },
   "release_evidence": "./docs/distribution/readiness.yaml#release_evidence",
   "starter_prompt": "Use Agent Council to choose the right model tier for each part of this task, escalating only when complexity or risk warrants it.",
-  "release_notes": "Local v0.9.0 preparation adds portable metadata, package README and MIT license, route-specific policy loading, opt-in local decision traces, and a native eval suite. Current evidence binds behavior and suite digests; historical receipts remain unchanged. Strict Claude validation passes, while the directory subfolder hook restriction, paid native evaluation, fresh qualifications, final artifact evidence, and submission remain pending.",
+  "release_notes": "Local v0.9.0 preparation adds portable metadata, package README and MIT license, route-specific policy loading, opt-in local decision traces, and a native eval suite. Current evidence binds behavior and suite digests. Historical native receipts containing session identifiers were removed from current plugin source. Strict Claude validation passes, while the directory subfolder hook restriction, paid native evaluation, fresh qualifications, final artifact evidence, and submission remain pending.",
   "category": "Productivity",
   "test_cases": [
     {

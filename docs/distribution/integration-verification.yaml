@@ -128,7 +128,7 @@ claude_ultimate_access:
 preservation:
   - "Legacy CANDIDATE_FILES unchanged."
   - "Historical qualification files unchanged in git diff."
-  - "No existing Council cases or historical receipts edited."
+  - "No existing Council cases edited. Three historical receipts containing session identifiers were removed from current plugin source; earlier Git history is unchanged."
   - "No commit, push, upload, submission, release installation, or artifact publication. Paid native outputs remain ignored local evidence."
   - "Independent review found and fixed a cross-root registry lookup in the Claude probe; no further P0-P2 finding in the reviewed loader or promotion root handling."
   - "The native probe runbook includes the required session debug log and states that loader evidence is structural only. The historical operational probe passed on an earlier candidate and is stale for the current package."
