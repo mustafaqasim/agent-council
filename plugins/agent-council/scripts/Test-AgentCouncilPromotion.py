@@ -23,6 +23,21 @@ def host_fixture(*, delivery_mode: str = "inline", role_protocol: bool = True) -
     native = module.QualificationTests()
     native.setUp()
     try:
+        # This fixture proves only its selected host binding, so its archive
+        # must not inherit any other provider's prior qualification claims.
+        registry = promotion.decode((native.root / promotion.REGISTRY_PATH).read_bytes())
+        for binding in registry["bindings"]:
+            binding["status"] = "candidate"
+            binding.pop("qualified_roles", None)
+            binding["binding_sha256"] = promotion.sha256(promotion.canonical(
+                {key: value for key, value in binding.items() if key != "binding_sha256"}))
+        for state in registry["provider_states"].values():
+            state["council_status"] = "fail_closed_until_qualified"
+        registry["registry_sha256"] = promotion.sha256(promotion.canonical(
+            {key: value for key, value in registry.items() if key != "registry_sha256"}))
+        (native.root / promotion.REGISTRY_PATH).write_bytes(promotion.canonical(registry))
+        native.workspace = native.base / "prepared-host-candidate"
+        native.manifest = codex.prepare(native.root, native.workspace)
         if role_protocol:
             native.workspace = native.base / "prepared-role"
             native.manifest = codex.prepare(native.root, native.workspace, delivery_mode=delivery_mode,
@@ -296,6 +311,28 @@ class PromotionTests(unittest.TestCase):
         self.assertEqual(result["host_selected_binding_ids"], ["codex-v3-ultimate"])
         self.assertTrue(result["native_harness_scoring_replayed"])
         self.assertFalse(result["provider_authenticity_verified"])
+
+    def test_host_fixture_drops_unproved_prior_provider_roles_from_promoted_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            promoted_root = Path(temporary).resolve()
+            paths = set(codex.V3_CANDIDATE_FILES) | set(codex.HARNESS_FILES) | {codex.REQUESTS}
+            for relative in paths:
+                target = promoted_root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((codex.ROOT / relative).read_bytes())
+            promoted_files, _ = fixture(role_protocol=True)
+            promoted_bytes = promoted_files[promotion.REGISTRY_PATH]
+            promotion.registry(promoted_bytes, "qualified")
+            (promoted_root / promotion.REGISTRY_PATH).write_bytes(promoted_bytes)
+            for delivery_mode in ("inline", "file"):
+                with self.subTest(delivery_mode=delivery_mode), mock.patch.object(codex, "ROOT", promoted_root):
+                    self.use_host_fixture(delivery_mode=delivery_mode)
+                    candidate = promotion.registry(self.files[promotion.ARCHIVE_PATH], "candidate")
+                    self.assertTrue(all("qualified_roles" not in binding for binding in candidate["bindings"]))
+                    self.assertTrue(all(state["council_status"] == "fail_closed_until_qualified"
+                                        for state in candidate["provider_states"].values()))
+                    self.assertEqual(self.verify()["host_selected_binding_ids"], ["codex-v3-ultimate"])
+                    self.assertEqual((promoted_root / promotion.REGISTRY_PATH).read_bytes(), promoted_bytes)
 
     def test_file_delivery_promotion_and_probe_replay_archived_reads(self) -> None:
         self.use_host_fixture(delivery_mode="file")

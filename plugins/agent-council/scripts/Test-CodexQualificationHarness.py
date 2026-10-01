@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import CodexQualificationHarness as harness
+import AgentCouncilPromotion as promotion
 
 
 class QualificationTests(unittest.TestCase):
@@ -30,6 +31,7 @@ class QualificationTests(unittest.TestCase):
         for binding in registry["bindings"]:
             if binding["provider"] == "codex":
                 binding["status"] = "candidate"
+                binding.pop("qualified_roles", None)
                 binding["binding_sha256"] = harness.sha(harness.canonical({k: v for k, v in binding.items() if k != "binding_sha256"}))
         registry["registry_sha256"] = harness.sha(harness.canonical({k: v for k, v in registry.items() if k != "registry_sha256"}))
         (self.root / harness.REGISTRY).write_bytes(harness.canonical(registry))
@@ -55,6 +57,45 @@ class QualificationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def test_setup_normalizes_promoted_codex_roles_without_changing_other_provider(self) -> None:
+        promoted_root = self.base / "promoted-shaped-source"
+        shutil.copytree(self.root, promoted_root)
+        registry = harness.decode((promoted_root / harness.REGISTRY).read_bytes())
+        for binding in registry["bindings"]:
+            binding["status"] = "qualified"
+            tiers = harness.role_protocol.TIERS
+            binding["qualified_roles"] = list(tiers[:tiers.index(binding["tier"]) + 1])
+            binding["binding_sha256"] = harness.sha(harness.canonical({k: v for k, v in binding.items() if k != "binding_sha256"}))
+        for state in registry["provider_states"].values():
+            state["council_status"] = "qualified"
+        registry["registry_sha256"] = harness.sha(harness.canonical({k: v for k, v in registry.items() if k != "registry_sha256"}))
+        promoted_bytes = harness.canonical(registry)
+        promotion.registry(promoted_bytes, status="qualified")
+        (promoted_root / harness.REGISTRY).write_bytes(promoted_bytes)
+        nested = QualificationTests()
+        try:
+            with mock.patch.object(harness, "ROOT", promoted_root):
+                nested.setUp()
+                normalized = promotion.registry((nested.root / harness.REGISTRY).read_bytes())
+                self.assertEqual(normalized["provider_states"]["codex"],
+                                 {"council_status": "fail_closed_until_qualified"})
+                self.assertEqual(normalized["provider_states"]["claude_code"], registry["provider_states"]["claude_code"])
+                for actual, original in zip(normalized["bindings"], registry["bindings"]):
+                    if actual["provider"] == "codex":
+                        self.assertEqual(actual["status"], "candidate")
+                        self.assertNotIn("qualified_roles", actual)
+                        expected = {**original, "status": "candidate"}
+                        expected.pop("qualified_roles")
+                        expected["binding_sha256"] = harness.sha(harness.canonical(
+                            {k: v for k, v in expected.items() if k != "binding_sha256"}))
+                        self.assertEqual(actual, expected)
+                    else:
+                        self.assertEqual(actual, original)
+                self.assertEqual((promoted_root / harness.REGISTRY).read_bytes(), promoted_bytes)
+        finally:
+            if hasattr(nested, "temporary"):
+                nested.tearDown()
 
     def make_transcripts(self, run_id: str = "native-forward-run-1", *, encrypted: bool = False) -> None:
         self.run_id = run_id
