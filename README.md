@@ -37,7 +37,7 @@ Agent Council does not read your remaining quota or predict the exact cost. It r
 
 In the published version, Codex can send routine work to Luna, implementation to Terra, review to Sol, and the hardest decisions to Astra.
 
-The current Claude Code candidates use Haiku 4.5 with unsupported effort for routine work, Sonnet 5 at high effort for implementation, Opus 5.5 at medium effort for operational review, and Opus 5.5 at high effort for the hardest decisions. An independent audit found that Haiku passed all 12 semantic cases in each of two prior native runs; prefatory and fenced JSON blocked strict parsing. Fresh native qualification under the current candidate is still required. Fable 5.1 requires separately purchased usage credits unavailable on the tested account. These v3 bindings remain unqualified.
+The current Claude Code candidates use Haiku 4.5 for routine work, Opus 5.5 at medium effort for implementation and operational review, and Opus 5.5 at high effort for the hardest decisions. They remain candidates until fresh qualification for this release passes.
 
 The available models still depend on your account and host. New model mappings in this branch remain candidates until native qualification passes.
 
