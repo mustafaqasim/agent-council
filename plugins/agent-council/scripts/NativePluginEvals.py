@@ -274,7 +274,10 @@ def check_native_traces(aggregate, result_directory, preparation, receipt, prior
     provider_ids = set()
     previous_start = started
     for arm_name in ("with", "without"):
-        arm = aggregate["cases"][0]["arms"][arm_name][0]
+        runs = aggregate["cases"][0]["arms"].get(arm_name)
+        if not isinstance(runs, list) or len(runs) != 1 or not isinstance(runs[0], dict):
+            raise ValueError("native trace requires exactly one recorded run per arm")
+        arm = runs[0]
         arm_start = native_time(arm.get("startedAt"))
         if not previous_start <= arm_start <= completed:
             raise ValueError("native arms are not ordered within the prepared run")
@@ -357,11 +360,16 @@ def check_slot(aggregate, slot, manifest, package=None):
         errors.append("native case mismatch")
     else:
         case = cases[0]
-        if case.get("runsPerCase") != 1 or case.get("dir") != "evals/" + slot["case"] or \
-                case.get("source") != "case_yaml":
-            errors.append("native run count mismatch")
         authored = next((item for item in load_suite(EVAL_DIR)["cases"]
                          if item["name"] == slot["case"]), None)
+        # The CLI reports authored runs here, even with a --runs 1 override.
+        # Actual execution count is enforced by one run per arm below and by
+        # the exact prepared/receipt command in campaign_receipts.
+        if (authored is None or type(case.get("runsPerCase")) is not int
+                or case["runsPerCase"] != authored.get("runs")):
+            errors.append("native authored run metadata mismatch")
+        if case.get("dir") != "evals/" + slot["case"] or case.get("source") != "case_yaml":
+            errors.append("native case source metadata mismatch")
         grader_names = [item.get("name") for item in case.get("graders", [])]
         expected_names = [item.get("name") for item in authored.get("graders", [])] if authored else []
         if not expected_names or grader_names != expected_names:

@@ -25,6 +25,33 @@ class NativeEvalTests(unittest.TestCase):
     def test_packaged_suite_valid(self):
         self.assertEqual(native.validate_suite(self.suite), [])
 
+    def test_all_native_case_source_metadata_matches_frozen_slot_inventory(self):
+        paths = sorted(native.EVAL_DIR.glob("*/case.yaml"))
+        cases = [json.loads(path.read_text()) for path in paths]
+        self.assertEqual(len(cases), 16)
+        self.assertEqual(len({case["name"] for case in cases}), 16)
+        for path, case in zip(paths, cases):
+            with self.subTest(case=case["name"]):
+                self.assertEqual(path.parent.name, case["name"])
+                self.assertIs(type(case["runs"]), int)
+                self.assertEqual(case["runs"], 3)
+        slots = native.campaign_slots([case["name"] for case in cases])
+        self.assertEqual(len(slots), 48)
+        self.assertEqual({slot["case"] for slot in slots}, {case["name"] for case in cases})
+
+    def test_native_method_accepts_explicit_built_in_workflow_not_arbitrary_built_in(self):
+        case = next(case for case in self.suite["cases"] if case["name"] == "ce-absence-native-method")
+        grader = next(grader for grader in case["graders"] if grader["name"] == "native-method")
+        for response in ("Use the native review method.", "Standalone review uses evidence gates.",
+                         "These steps use only Council's own built-in workflow.",
+                         "Built-in steps for reviewing a proposed change", "Use the built in workflow."):
+            with self.subTest(response=response):
+                self.assertIsNotNone(re.search(grader["pattern"], response, re.I))
+        for response in ("A built-in debugger exists.", "Use built-in tooling.", "The reviewer is built-in.",
+                         "Review the built-in workflowish feature.", "Use prebuilt-in steps."):
+            with self.subTest(response=response):
+                self.assertIsNone(re.search(grader["pattern"], response, re.I))
+
     def test_critical_response_graders_reject_contradictions(self):
         # Execute the actual case regexes, not copies of their patterns. Tool
         # events remain native-only; these fixtures isolate response scoring.
@@ -236,15 +263,15 @@ class NativeEvalTests(unittest.TestCase):
             path.mkdir(parents=True)
             result = path / "result"
             result.mkdir()
-            grader_names = [grader["name"] for case in self.suite["cases"]
-                            if case["name"] == slot["case"] for grader in case["graders"]]
+            authored = next(case for case in self.suite["cases"] if case["name"] == slot["case"])
+            grader_names = [grader["name"] for grader in authored["graders"]]
             aggregate = {"schemaVersion": 1, "partial": False, "partialReason": None,
                          "claudeVersion": "2.1.281", "costUsd": 0.1, "startedAt": stamp(1),
                          "suite": {"root": str(root / "verified-package"),
                                    "ablation": "with-without", "modelOverride": native.CAMPAIGN_MODEL,
                                    "threshold": 1, "concurrency": 1},
                          "cases": [{"name": slot["case"], "dir": "evals/" + slot["case"],
-                                    "source": "case_yaml", "runsPerCase": 1,
+                                    "source": "case_yaml", "runsPerCase": authored["runs"],
                                     "graders": [{"name": name} for name in grader_names], "arms": {
                                         "with": [{"score": 1, "passed": True, "costUsd": 0.05, "error": None,
                                                   "skippedPaidGraders": False,
@@ -680,6 +707,53 @@ class NativeEvalTests(unittest.TestCase):
                 mutation(candidate)
                 with self.subTest(candidate=candidate):
                     self.assertTrue(native.check_slot(candidate, manifest["slots"][0], manifest))
+
+    def test_campaign_authored_metadata_does_not_replace_exact_actual_run_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            slot = manifest["slots"][-1]
+            path = root / "slots" / slot["id"]
+            aggregate_path = path / "result/aggregate-result.json"
+            original = aggregate_path.read_bytes()
+            aggregate = json.loads(original)
+            self.assertEqual(aggregate["cases"][0]["runsPerCase"], 3)
+            self.assertEqual({arm: len(runs) for arm, runs in aggregate["cases"][0]["arms"].items()},
+                             {"with": 1, "without": 1})
+            self.assertEqual(native.campaign_receipts(root, manifest)[1], [])
+            mutations = {
+                "wrong_name": lambda case: case.update(name="another-case"),
+                "wrong_directory": lambda case: case.update(dir="evals/another-case"),
+                "wrong_source": lambda case: case.update(source="discovery"),
+                "missing_metadata": lambda case: case.pop("runsPerCase"),
+                "extra_with_run": lambda case: case["arms"]["with"].append(copy.deepcopy(case["arms"]["with"][0])),
+                "extra_without_run": lambda case: case["arms"]["without"].append(copy.deepcopy(case["arms"]["without"][0])),
+                "missing_with_run": lambda case: case["arms"]["with"].clear(),
+                "missing_without_run": lambda case: case["arms"]["without"].clear(),
+            }
+            for value in (1, 0, 4, True, 3.0, "3", None):
+                mutations["metadata_" + repr(value)] = lambda case, value=value: case.update(runsPerCase=value)
+            for name, mutate in mutations.items():
+                with self.subTest(name=name):
+                    changed = copy.deepcopy(aggregate)
+                    mutate(changed["cases"][0])
+                    aggregate_path.write_text(json.dumps(changed))
+                    self.reseal_campaign_slot(path)
+                    self.assertTrue(native.campaign_receipts(root, manifest)[1])
+            aggregate_path.write_bytes(original)
+            self.reseal_campaign_slot(path)
+            # Even matching authored metadata and one recorded run cannot
+            # authorize a different CLI override in the sealed command.
+            prep_path, receipt_path = path / "preparation.json", path / "receipt.json"
+            prep = json.loads(prep_path.read_text())
+            receipt = json.loads(receipt_path.read_text())
+            for value in (prep, receipt):
+                value["command"][value["command"].index("--runs") + 1] = "3"
+            prep_path.write_text(json.dumps(prep))
+            receipt_path.write_text(json.dumps(receipt))
+            self.reseal_campaign_slot(path)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertTrue(any("native command or cost ceiling changed" in error for error in errors), errors)
 
     def promotion_fixture(self, root, **kwargs):
         registry = json.loads((native.PLUGIN / promotion.REGISTRY_PATH).read_text())

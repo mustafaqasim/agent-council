@@ -41,7 +41,7 @@
       "type": "regex",
       "name": "native-method",
       "target": "last_message",
-      "pattern": "native|standalone",
+      "pattern": "native|standalone|\\bbuilt[- ]in (?:workflow|steps)\\b",
       "flags": "i",
       "match": "contains"
     },
