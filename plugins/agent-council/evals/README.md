@@ -26,7 +26,9 @@ python3 plugins/agent-council/scripts/NativePluginEvals.py release-campaign step
 python3 plugins/agent-council/scripts/NativePluginEvals.py release-campaign verify --campaign plugins/agent-council/evals/results/campaign-001
 ```
 
-Repeat `step` until it reports all 48 slots complete. Each step runs one exact case with one with/without pair, `--runs 1`, threshold 1.0, Opus 5.5, local trusted plugin, no scaffold, no publication, and a remaining-budget native cost ceiling. The campaign keeps private output in the ignored results directory. The older monolithic `release` mode remains available.
+Repeat `step` until it reports all 48 slots complete. Each step runs one exact case with one with/without pair, `--runs 1`, threshold 1.0, exact model `claude-opus-5-5`, local trusted plugin, no scaffold, no publication, and the remaining budget passed to the native CLI. The CLI checks cost before each arm launches, so an in-flight arm can exceed that budget. $20 is the campaign acceptance cap, not a strict spend ceiling. An observed overrun invalidates the campaign and prevents the next step.
+
+The campaign uses `--keep-temp` and copies both original native trace files into each ignored slot result before sealing all output hashes. Verification requires the exact model in the native init and actual assistant response, successful terminal usage and matching arm cost, unique session, trace, and provider response identities across all 96 arms, and native starts and response timestamps ordered after preparation and campaign creation. Provider message IDs are required; request IDs are also checked when present. Repeated streaming chunks may share an identity within one arm. Copied or replayed output, missing traces, aliases, and synthetic error responses cannot qualify. Native temporary directories and retained traces contain private prompts and responses; they must remain local. The older monolithic `release` mode remains available.
 
 ```sh
 python3 plugins/agent-council/scripts/NativePluginEvals.py release

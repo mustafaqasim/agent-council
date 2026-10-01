@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import uuid
 
 from ClaudeQualificationHarness import current_release_binding, digest_bytes
 
@@ -56,7 +57,8 @@ def campaign_command(package, output, case, remaining):
     return ["claude", "plugin", "eval", str(package), "--no-publish", "--trust-plugin",
             "--no-scaffold", "--threshold", "1.0", "--concurrency", "1",
             "--model", CAMPAIGN_MODEL, "--output-dir", str(output), "--case", case,
-            "--runs", "1", "--ablation", "with-without", "--max-cost-usd", str(remaining)]
+            "--runs", "1", "--ablation", "with-without", "--keep-temp",
+            "--max-cost-usd", str(remaining)]
 
 
 def campaign_init(directory):
@@ -130,12 +132,106 @@ def output_hashes(result_directory):
     return hashes
 
 
+def native_time(value):
+    if not isinstance(value, str):
+        raise ValueError("native timestamp missing")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.utcoffset() is None:
+        raise ValueError("native timestamp has no timezone")
+    return parsed
+
+
+def preserve_traces(aggregate, result_directory):
+    """Copy original native bytes before sealing; never rewrite the aggregate."""
+    destination = result_directory / "traces"
+    destination.mkdir(exist_ok=False)
+    for arm_name in ("with", "without"):
+        arm = aggregate["cases"][0]["arms"][arm_name][0]
+        source = Path(arm["tracePath"])
+        if not source.is_absolute() or any(part.is_symlink() for part in (source, *source.parents)):
+            raise ValueError("native trace source must be absolute without symlinks")
+        (destination / (arm_name + ".jsonl")).write_bytes(source.read_bytes())
+
+
+def check_native_traces(aggregate, result_directory, preparation, receipt, prior_completed):
+    """Return native identities only after validating the retained stream events."""
+    prepared = native_time(preparation.get("recorded_at"))
+    completed = native_time(receipt.get("completed_at"))
+    started = native_time(aggregate.get("startedAt"))
+    if not prepared < started <= completed or (prior_completed is not None and prepared < prior_completed):
+        raise ValueError("native run precedes preparation or prior slot completion")
+    identities = []
+    sources = []
+    provider_ids = set()
+    previous_start = started
+    for arm_name in ("with", "without"):
+        arm = aggregate["cases"][0]["arms"][arm_name][0]
+        arm_start = native_time(arm.get("startedAt"))
+        if not previous_start <= arm_start <= completed:
+            raise ValueError("native arms are not ordered within the prepared run")
+        previous_start = arm_start
+        source = arm.get("tracePath")
+        if not isinstance(source, str) or not Path(source).is_absolute():
+            raise ValueError("native trace source identity missing")
+        sources.append(source)
+        raw = (result_directory / "traces" / (arm_name + ".jsonl")).read_bytes()
+        events = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        if not events or any(not isinstance(event, dict) for event in events):
+            raise ValueError("native trace events invalid")
+        initial = [event for event in events if event.get("type") == "system" and event.get("subtype") == "init"]
+        results = [event for event in events if event.get("type") == "result"]
+        if len(initial) != 1 or len(results) != 1 or events[0] != initial[0] or events[-1] != results[0]:
+            raise ValueError("native trace init or terminal result missing or repeated")
+        session = initial[0].get("session_id")
+        if not isinstance(session, str) or str(uuid.UUID(session)) != session or \
+                {event.get("session_id") for event in events} != {session}:
+            raise ValueError("native trace session identity inconsistent")
+        if initial[0].get("model") != CAMPAIGN_MODEL:
+            raise ValueError("native trace resolved model mismatch")
+        assistants = [event for event in events if event.get("type") == "assistant" and
+                      event.get("parent_tool_use_id") is None]
+        if not assistants or any(event.get("is_api_error_message") or event.get("error") or
+                                 event.get("message", {}).get("model") != CAMPAIGN_MODEL
+                                 for event in assistants):
+            raise ValueError("native trace lacks exact successful model response")
+        previous_message = arm_start
+        arm_provider_ids = set()
+        for event in assistants:
+            message_id = event["message"].get("id")
+            if not isinstance(message_id, str) or not message_id.strip():
+                raise ValueError("native assistant provider message identity missing")
+            arm_provider_ids.add(("message", message_id))
+            request_id = event.get("request_id")
+            if request_id is not None:
+                if not isinstance(request_id, str) or not request_id.strip():
+                    raise ValueError("native assistant provider request identity invalid")
+                arm_provider_ids.add(("request", request_id))
+            timestamp = native_time(event.get("timestamp"))
+            if not previous_message <= timestamp <= completed:
+                raise ValueError("native trace response timestamp outside prepared run")
+            previous_message = timestamp
+        # Streaming can repeat one provider message within an arm, but another
+        # arm or slot must never reuse that response or provider request.
+        if provider_ids.intersection(arm_provider_ids):
+            raise ValueError("native provider response replay detected across arms")
+        provider_ids.update(arm_provider_ids)
+        terminal = results[0]
+        if terminal.get("subtype") != "success" or terminal.get("is_error") is not False or \
+                CAMPAIGN_MODEL not in terminal.get("modelUsage", {}):
+            raise ValueError("native trace terminal result failed or model usage missing")
+        if slot_cost({"costUsd": terminal.get("total_cost_usd")}) != slot_cost(arm):
+            raise ValueError("native trace cost differs from aggregate arm")
+        previous_start = previous_message
+        identities.append(session)
+    return identities, sources, provider_ids, started, completed
+
+
 def check_slot(aggregate, slot, manifest, package=None):
     errors = []
     if aggregate.get("schemaVersion") != 1 or aggregate.get("partial") is not False or aggregate.get("partialReason"):
         errors.append("native aggregate partial or invalid")
     suite = aggregate.get("suite", {})
-    if suite.get("ablation") != "with-without" or suite.get("modelOverride") not in {CAMPAIGN_MODEL, "opus"} or \
+    if suite.get("ablation") != "with-without" or suite.get("modelOverride") != CAMPAIGN_MODEL or \
             suite.get("threshold") != 1 or suite.get("concurrency") != 1:
         errors.append("native suite parameters changed")
     if package is not None and suite.get("root") != str(package):
@@ -201,6 +297,8 @@ def campaign_receipts(directory, manifest):
     actual = {path.name for path in slots_dir.iterdir()} if slots_dir.exists() else set()
     errors = ["unexpected or duplicate slot directory: " + name for name in sorted(actual - expected)]
     receipts = []
+    sessions, sources, provider_ids, starts = set(), set(), set(), set()
+    prior_completed = None
     gap = False
     for slot in manifest["slots"]:
         path = slots_dir / slot["id"]
@@ -228,15 +326,30 @@ def campaign_receipts(directory, manifest):
             if preparation.get("slot") != slot or preparation.get("manifest_sha256") != canonical_hash(manifest) or \
                     preparation.get("command") != receipt.get("command"):
                 errors.append(slot["id"] + ": preparation mismatch")
+            if native_time(preparation.get("recorded_at")) < native_time(manifest.get("created_at")):
+                errors.append(slot["id"] + ": preparation precedes campaign creation")
             prior_cost = sum((Decimal(item["cost_usd"]) for item in receipts), Decimal(0))
             expected_command = campaign_command(directory / "verified-package", path / "result",
                                                 slot["case"], CAMPAIGN_CAP - prior_cost)
             if receipt.get("command") != expected_command:
                 errors.append(slot["id"] + ": native command or cost ceiling changed")
-            if receipt.get("exit_code") != 0 or receipt.get("cost_usd") != str(slot_cost(aggregate)):
+            if receipt.get("exit_code") != 0 or receipt.get("cost_usd") != str(slot_cost(aggregate)) or \
+                    receipt.get("trace_preservation_error") is not None:
                 errors.append(slot["id"] + ": native command failed or cost mismatch")
             errors.extend(slot["id"] + ": " + item for item in check_slot(
                 aggregate, slot, manifest, directory / "verified-package"))
+            identities, trace_sources, response_ids, started, completed = check_native_traces(
+                aggregate, path / "result", preparation, receipt, prior_completed)
+            if len(set(identities)) != 2 or sessions.intersection(identities) or \
+                    len(set(trace_sources)) != 2 or sources.intersection(trace_sources) or started in starts:
+                errors.append(slot["id"] + ": native run or arm replay detected")
+            if provider_ids.intersection(response_ids):
+                errors.append(slot["id"] + ": native provider response replay detected across slots")
+            sessions.update(identities)
+            sources.update(trace_sources)
+            provider_ids.update(response_ids)
+            starts.add(started)
+            prior_completed = completed
             receipts.append(receipt)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             errors.append(slot["id"] + ": invalid sealed output: " + str(exc))
@@ -265,18 +378,31 @@ def campaign_step(directory):
                    "recorded_at": datetime.now(timezone.utc).isoformat()}
     preparation_path = path / "preparation.json"
     preparation_path.write_text(json.dumps(preparation, indent=2) + "\n")
+    print("Native budget is checked before each arm launches; $20 is an acceptance cap, "
+          "not a strict spend ceiling. Any observed overrun stops and invalidates the campaign.", flush=True)
     result = subprocess.run(command, cwd=directory / "verified-package")
     aggregate_path = path / "result/aggregate-result.json"
     aggregate_bytes = aggregate_path.read_bytes() if aggregate_path.is_file() else b""
     aggregate = json.loads(aggregate_bytes) if aggregate_bytes else {}
     cost = slot_cost(aggregate) if aggregate_bytes else Decimal(0)
+    trace_error = None
+    if aggregate_bytes:
+        try:
+            preserve_traces(aggregate, path / "result")
+        except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+            trace_error = str(exc)
     hashes = output_hashes(path / "result") if aggregate_bytes else {}
     receipt = {"slot": slot, "manifest_sha256": canonical_hash(manifest), "command": command,
                "preparation_sha256": digest_bytes(preparation_path.read_bytes()),
                "aggregate_sha256": digest_bytes(aggregate_bytes), "output_sha256": hashes,
-               "cost_usd": str(cost),
+               "cost_usd": str(cost), "trace_preservation_error": trace_error,
                "exit_code": result.returncode, "completed_at": datetime.now(timezone.utc).isoformat()}
     (path / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    if cost > remaining:
+        raise ValueError(f"campaign global $20 acceptance cap exceeded: observed ${spent + cost}; "
+                         "native prelaunch budget permitted an in-flight overrun")
+    if trace_error:
+        raise ValueError("campaign native trace preservation failed: " + trace_error)
     read_campaign(directory)
     _, errors = campaign_receipts(directory, manifest)
     if errors:

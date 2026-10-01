@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline regression tests for native eval coverage and publication guards."""
 import copy
+from datetime import datetime, timedelta, timezone
 import importlib.util
 from pathlib import Path
 import unittest
@@ -173,9 +174,13 @@ class NativeEvalTests(unittest.TestCase):
     def campaign_fixture(self, root):
         slots = native.campaign_slots([case["name"] for case in self.suite["cases"]])
         manifest = {"schema_version": native.CAMPAIGN_SCHEMA, "model": native.CAMPAIGN_MODEL,
-                    "cost_cap_usd": "20", "cli_version": "Claude Code 2.1.281", "slots": slots}
+                    "cost_cap_usd": "20", "cli_version": "Claude Code 2.1.281", "slots": slots,
+                    "created_at": "2026-09-30T23:59:59+00:00"}
         (root / "verified-package").mkdir()
         for slot in slots:
+            index = slots.index(slot)
+            base = datetime(2026, 10, 1, tzinfo=timezone.utc) + timedelta(minutes=index)
+            stamp = lambda seconds: (base + timedelta(seconds=seconds)).isoformat()
             path = root / "slots" / slot["id"]
             path.mkdir(parents=True)
             result = path / "result"
@@ -183,9 +188,9 @@ class NativeEvalTests(unittest.TestCase):
             grader_names = [grader["name"] for case in self.suite["cases"]
                             if case["name"] == slot["case"] for grader in case["graders"]]
             aggregate = {"schemaVersion": 1, "partial": False, "partialReason": None,
-                         "claudeVersion": "2.1.281", "costUsd": 0.1,
+                         "claudeVersion": "2.1.281", "costUsd": 0.1, "startedAt": stamp(1),
                          "suite": {"root": str(root / "verified-package"),
-                                   "ablation": "with-without", "modelOverride": "opus",
+                                   "ablation": "with-without", "modelOverride": native.CAMPAIGN_MODEL,
                                    "threshold": 1, "concurrency": 1},
                          "cases": [{"name": slot["case"], "dir": "evals/" + slot["case"],
                                     "source": "case_yaml", "runsPerCase": 1,
@@ -198,6 +203,21 @@ class NativeEvalTests(unittest.TestCase):
                                                      "skippedPaidGraders": False,
                                                      "graders": [{"name": name, "scored": True, "passed": False}
                                                                  for name in grader_names]}]}}]}
+            (result / "traces").mkdir()
+            for arm_index, arm_name in enumerate(("with", "without")):
+                session = str(native.uuid.UUID(int=index * 2 + arm_index + 1))
+                aggregate["cases"][0]["arms"][arm_name][0].update(
+                    startedAt=stamp(2 + arm_index * 10), tracePath=f"/private/tmp/e-{session}/out/trace.jsonl")
+                events = [
+                    {"type": "system", "subtype": "init", "model": native.CAMPAIGN_MODEL, "session_id": session},
+                    {"type": "assistant", "parent_tool_use_id": None, "session_id": session,
+                     "timestamp": stamp(3 + arm_index * 10), "request_id": "req_" + session,
+                     "message": {"model": native.CAMPAIGN_MODEL, "id": "msg_" + session}},
+                    {"type": "result", "subtype": "success", "is_error": False, "session_id": session,
+                     "total_cost_usd": 0.05, "modelUsage": {native.CAMPAIGN_MODEL: {"costUSD": 0.05}}},
+                ]
+                (result / "traces" / (arm_name + ".jsonl")).write_text(
+                    "\n".join(json.dumps(event) for event in events) + "\n")
             raw = json.dumps(aggregate).encode()
             (result / "aggregate-result.json").write_bytes(raw)
             prior = slots.index(slot)
@@ -205,16 +225,192 @@ class NativeEvalTests(unittest.TestCase):
                                               native.CAMPAIGN_CAP - sum((native.Decimal("0.1")
                                                                        for _ in range(prior)), native.Decimal(0)))
             preparation = {"slot": slot, "manifest_sha256": native.canonical_hash(manifest),
-                           "command": command}
+                           "command": command, "recorded_at": stamp(0)}
             preparation_raw = json.dumps(preparation).encode()
             (path / "preparation.json").write_bytes(preparation_raw)
             receipt = {"slot": slot, "manifest_sha256": native.canonical_hash(manifest),
                        "command": command, "preparation_sha256": native.digest_bytes(preparation_raw),
                        "aggregate_sha256": native.digest_bytes(raw),
-                       "output_sha256": {"aggregate-result.json": native.digest_bytes(raw)},
-                       "cost_usd": "0.1", "exit_code": 0}
+                       "output_sha256": native.output_hashes(result),
+                       "cost_usd": "0.1", "exit_code": 0, "completed_at": stamp(30)}
             (path / "receipt.json").write_text(json.dumps(receipt))
         return manifest
+
+    def reseal_campaign_slot(self, path):
+        receipt = json.loads((path / "receipt.json").read_text())
+        receipt.update(aggregate_sha256=native.digest_bytes((path / "result/aggregate-result.json").read_bytes()),
+                       output_sha256=native.output_hashes(path / "result"),
+                       preparation_sha256=native.digest_bytes((path / "preparation.json").read_bytes()))
+        (path / "receipt.json").write_text(json.dumps(receipt))
+
+    def test_campaign_rejects_replayed_native_output_even_when_resealed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            original = root / "slots" / manifest["slots"][0]["id"]
+            replay = root / "slots" / manifest["slots"][16]["id"]
+            for relative in ("aggregate-result.json", "traces/with.jsonl", "traces/without.jsonl"):
+                (replay / "result" / relative).write_bytes((original / "result" / relative).read_bytes())
+            self.reseal_campaign_slot(replay)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertTrue(any("precedes preparation" in error for error in errors), errors)
+
+    def test_campaign_rejects_duplicate_session_despite_fresh_timestamps(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            first = root / "slots" / manifest["slots"][0]["id"]
+            second = root / "slots" / manifest["slots"][1]["id"]
+            session = json.loads((first / "result/traces/with.jsonl").read_text().splitlines()[0])["session_id"]
+            trace = second / "result/traces/with.jsonl"
+            events = [json.loads(line) for line in trace.read_text().splitlines()]
+            for event in events:
+                event["session_id"] = session
+            trace.write_text("\n".join(json.dumps(event) for event in events))
+            self.reseal_campaign_slot(second)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertTrue(any("replay detected" in error for error in errors), errors)
+
+    def test_campaign_rejects_rewritten_session_and_time_on_replayed_provider_response(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            first = root / "slots" / manifest["slots"][0]["id"]
+            second = root / "slots" / manifest["slots"][16]["id"]
+            for arm in ("with", "without"):
+                trace = second / "result/traces" / (arm + ".jsonl")
+                fresh = [json.loads(line) for line in trace.read_text().splitlines()]
+                reused = [json.loads(line) for line in
+                          (first / "result/traces" / (arm + ".jsonl")).read_text().splitlines()]
+                for event, replacement in zip(reused, fresh):
+                    event["session_id"] = replacement["session_id"]
+                    if "timestamp" in event:
+                        event["timestamp"] = replacement["timestamp"]
+                trace.write_text("\n".join(json.dumps(event) for event in reused))
+            self.reseal_campaign_slot(second)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("provider response replay detected across slots", errors[0])
+
+    def test_campaign_provider_ids_repeat_only_inside_the_same_arm(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            path = root / "slots" / manifest["slots"][0]["id"]
+            trace = path / "result/traces/with.jsonl"
+            rows = [json.loads(line) for line in trace.read_text().splitlines()]
+            rows.insert(2, copy.deepcopy(rows[1]))
+            trace.write_text("\n".join(json.dumps(row) for row in rows))
+            self.reseal_campaign_slot(path)
+            self.assertEqual(native.campaign_receipts(root, manifest)[1], [])
+            other = path / "result/traces/without.jsonl"
+            other_rows = [json.loads(line) for line in other.read_text().splitlines()]
+            other_rows[1]["message"]["id"] = rows[1]["message"]["id"]
+            other.write_text("\n".join(json.dumps(row) for row in other_rows))
+            self.reseal_campaign_slot(path)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertTrue(any("provider response replay detected across arms" in error for error in errors), errors)
+
+    def test_campaign_rejects_preparation_before_campaign_creation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            path = root / "slots" / manifest["slots"][0]["id"]
+            prep = path / "preparation.json"
+            value = json.loads(prep.read_text())
+            value["recorded_at"] = "2026-09-30T23:59:58+00:00"
+            prep.write_text(json.dumps(value))
+            self.reseal_campaign_slot(path)
+            errors = native.campaign_receipts(root, manifest)[1]
+            self.assertTrue(any("preparation precedes campaign creation" in error for error in errors), errors)
+
+    def test_campaign_rejects_missing_or_wrong_native_model_evidence(self):
+        mutations = {
+            "alias": lambda rows: rows[0].update(model="opus"),
+            "wrong_response_model": lambda rows: rows[1]["message"].update(model="claude-sonnet-4-6"),
+            "synthetic": lambda rows: rows[1]["message"].update(model="<synthetic>"),
+            "terminal_error": lambda rows: rows[-1].update(is_error=True),
+            "missing_usage": lambda rows: rows[-1].update(modelUsage={}),
+            "trace_cost": lambda rows: rows[-1].update(total_cost_usd=0.06),
+            "session_mismatch": lambda rows: rows[-1].update(session_id=str(native.uuid.uuid4())),
+            "stale_response": lambda rows: rows[1].update(timestamp="2025-01-01T00:00:00+00:00"),
+            "no_assistant": lambda rows: rows.pop(1),
+            "missing_terminal": lambda rows: rows.pop(),
+            "missing_provider_message_id": lambda rows: rows[1]["message"].pop("id"),
+            "empty_provider_message_id": lambda rows: rows[1]["message"].update(id=" "),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                manifest = self.campaign_fixture(root)
+                path = root / "slots" / manifest["slots"][0]["id"]
+                trace = path / "result/traces/with.jsonl"
+                rows = [json.loads(line) for line in trace.read_text().splitlines()]
+                mutate(rows)
+                trace.write_text("\n".join(json.dumps(row) for row in rows))
+                self.reseal_campaign_slot(path)
+                self.assertTrue(native.campaign_receipts(root, manifest)[1])
+
+    def test_campaign_rejects_unretained_trace_and_aggregate_alias(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = self.campaign_fixture(root)
+            path = root / "slots" / manifest["slots"][0]["id"]
+            (path / "result/traces/with.jsonl").unlink()
+            self.reseal_campaign_slot(path)
+            self.assertTrue(native.campaign_receipts(root, manifest)[1])
+            aggregate = json.loads((path / "result/aggregate-result.json").read_text())
+            aggregate["suite"]["modelOverride"] = "opus"
+            self.assertIn("native suite parameters changed", native.check_slot(aggregate, manifest["slots"][0], manifest))
+
+    def test_preserve_native_trace_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            output = root / "result"
+            output.mkdir()
+            arms = {}
+            for arm in ("with", "without"):
+                source = root / (arm + ".jsonl")
+                source.write_bytes(b'{"original": true}\r\n')
+                arms[arm] = [{"tracePath": str(source)}]
+            native.preserve_traces({"cases": [{"arms": arms}]}, output)
+            for arm in arms:
+                self.assertEqual((output / "traces" / (arm + ".jsonl")).read_bytes(), b'{"original": true}\r\n')
+
+    def test_campaign_seals_and_stops_immediately_on_native_cost_overrun(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = {"slots": native.campaign_slots([case["name"] for case in self.suite["cases"]])}
+            result_dir = root / "slots" / manifest["slots"][0]["id"] / "result"
+
+            def paid_result(command, **_kwargs):
+                self.assertIn("--keep-temp", command)
+                self.assertEqual(command[command.index("--max-cost-usd") + 1], "20")
+                result_dir.mkdir()
+                (result_dir / "aggregate-result.json").write_text(json.dumps({"costUsd": 20.01}))
+                return native.subprocess.CompletedProcess(command, 0)
+
+            with patch.object(native, "read_campaign", return_value=manifest), \
+                 patch.object(native, "campaign_receipts", return_value=([], [])), \
+                 patch.object(native, "preserve_traces"), \
+                 patch.object(native.subprocess, "run", side_effect=paid_result) as launch, \
+                 patch("builtins.print"):
+                with self.assertRaisesRegex(ValueError, "acceptance cap exceeded.*20.01"):
+                    native.campaign_step(root)
+                launch.assert_called_once()
+            receipt = json.loads((result_dir.parent / "receipt.json").read_text())
+            self.assertEqual(receipt["cost_usd"], "20.01")
+            self.assertTrue((result_dir.parent / "preparation.json").is_file())
+
+    def test_campaign_never_launches_after_invalid_or_overbudget_receipts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = {"slots": native.campaign_slots([case["name"] for case in self.suite["cases"]])}
+            with patch.object(native, "read_campaign", return_value=manifest), \
+                 patch.object(native, "campaign_receipts", return_value=([], ["global $20 cost cap exceeded"])), \
+                 patch.object(native.subprocess, "run") as launch:
+                with self.assertRaisesRegex(ValueError, "campaign stopped"):
+                    native.campaign_step(Path(temporary))
+                launch.assert_not_called()
 
     def test_campaign_complete_and_missing_slot(self):
         with tempfile.TemporaryDirectory() as temporary:
