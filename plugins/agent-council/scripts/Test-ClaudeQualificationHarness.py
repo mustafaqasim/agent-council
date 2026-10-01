@@ -188,6 +188,65 @@ def test_current_identity() -> None:
         harness.score(score_args)
         require(len(promotion._qualification_transcript(default_transcript, "claude_code", args.session_id,
                     args.model_id, "medium")) == len(EXPECTED_CLAIMS), "promotion rejects matching default permission metadata")
+        cost_tail = {
+            "type": "cost-state", "sessionId": args.session_id, "totalCostUSD": 0.35,
+            "totalAPIDuration": 32000, "totalAPIDurationWithoutRetries": 31990,
+            "totalToolDuration": 71, "totalLinesAdded": 0, "totalLinesRemoved": 0,
+            "totalDuration": 98000, "startTime": 1790864237964,
+            "modelUsage": {args.model_id: {
+                "inputTokens": 8, "outputTokens": 3585, "thinkingTokens": 461,
+                "cacheReadInputTokens": 47461, "cacheCreationInputTokens": 34377,
+                "webSearchRequests": 0, "costUSD": 0.35,
+            }},
+            "hasUnknownModelCost": False,
+        }
+        for terminal_ui in ([], ui_tail[:1], ui_tail):
+            cost_transcript = [*rows, native_tail, *terminal_ui, cost_tail]
+            source.write_text("".join(json.dumps(row) + "\n" for row in cost_transcript))
+            harness.score(score_args)
+            require(len(promotion._qualification_transcript(cost_transcript, "claude_code", args.session_id,
+                        args.model_id, "medium")) == len(EXPECTED_CLAIMS), "promotion rejects native cost metadata")
+        cost_usage = cost_tail["modelUsage"][args.model_id]
+        bad_cost_tails = [
+            ("duplicate cost row", [cost_tail, cost_tail]),
+            ("UI after cost row", [cost_tail, ui_tail[0]]),
+            ("foreign cost session", [{**cost_tail, "sessionId": "foreign"}]),
+            ("extra cost content", [{**cost_tail, "message": {"content": "Revise"}}]),
+            ("missing cost field", [{k: v for k, v in cost_tail.items() if k != "startTime"}]),
+            ("nonboolean unknown cost", [{**cost_tail, "hasUnknownModelCost": "false"}]),
+            ("foreign usage model", [{**cost_tail, "modelUsage": {"other-model": cost_usage}}]),
+            ("empty usage", [{**cost_tail, "modelUsage": {}}]),
+            ("extra usage model", [{**cost_tail, "modelUsage": {**cost_tail["modelUsage"], "other-model": cost_usage}}]),
+            ("nonobject usage", [{**cost_tail, "modelUsage": "Revise"}]),
+            ("nested usage content", [{**cost_tail, "modelUsage": {args.model_id: {**cost_usage, "message": "Revise"}}}]),
+            ("missing usage field", [{**cost_tail, "modelUsage": {args.model_id: {k: v for k, v in cost_usage.items() if k != "thinkingTokens"}}}]),
+            ("later user after cost", [cost_tail, {"type": "user", "message": {"content": "Revise"}}]),
+            ("later tool after cost", [cost_tail, {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "later", "content": "late"}]}}]),
+            ("later assistant after cost", [cost_tail, {**rows[-1], "message": {"content": [{"type": "text", "text": "I retract this answer."}]}}]),
+            ("later valid answer after cost", [cost_tail, rows[-1]]),
+            ("later tool and valid answer after cost", [cost_tail, rows[-3], rows[-2], rows[-1]]),
+        ]
+        for field in ("totalAPIDuration", "totalAPIDurationWithoutRetries", "totalToolDuration",
+                      "totalLinesAdded", "totalLinesRemoved", "totalDuration", "startTime"):
+            for invalid in (-1, True, 1.5, "1"):
+                bad_cost_tails.append((f"invalid {field}: {invalid!r}", [{**cost_tail, field: invalid}]))
+        for invalid in (-1, True, "1", float("inf"), float("nan")):
+            bad_cost_tails.append((f"invalid total cost: {invalid!r}", [{**cost_tail, "totalCostUSD": invalid}]))
+            bad_cost_tails.append((f"invalid model cost: {invalid!r}", [{**cost_tail, "modelUsage": {args.model_id: {**cost_usage, "costUSD": invalid}}}]))
+        for field in cost_usage.keys() - {"costUSD"}:
+            for invalid in (-1, True, 1.5, "1"):
+                bad_cost_tails.append((f"invalid usage {field}: {invalid!r}", [{**cost_tail, "modelUsage": {args.model_id: {**cost_usage, field: invalid}}}]))
+        for label, tail in bad_cost_tails:
+            changed_rows = [*rows, native_tail, *tail]
+            source.write_text("".join(json.dumps(row) + "\n" for row in changed_rows))
+            for consumer in (lambda: harness.score(score_args),
+                             lambda: promotion._qualification_transcript(changed_rows, "claude_code", args.session_id, args.model_id, "medium")):
+                try:
+                    consumer()
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError(f"accepted {label}")
         bad_ui_tails = (
             ("duplicate UI row", [*ui_tail, ui_tail[-1]]),
             ("out-of-order UI row", [ui_tail[1], ui_tail[0], *ui_tail[2:]]),

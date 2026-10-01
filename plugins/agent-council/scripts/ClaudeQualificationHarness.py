@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 import uuid
@@ -49,6 +50,11 @@ def extract_qualification_json(texts: list[tuple[int, str]]) -> tuple[int, dict[
 
 
 def validate_qualification_tail(rows: list[dict[str, Any]], response_index: int) -> None:
+    # A later answer cannot reopen a turn already closed by native bookkeeping.
+    if any(row.get("type") == "cost-state" or
+           (row.get("type") == "system" and row.get("subtype") == "turn_duration")
+           for row in rows[:response_index]):
+        raise ValueError("QUALIFICATION_RESPONSE_NOT_FINAL")
     suffix = rows[response_index + 1:]
     if suffix:
         if not _native_turn_duration(suffix[0], rows[response_index]):
@@ -60,6 +66,9 @@ def validate_qualification_tail(rows: list[dict[str, Any]], response_index: int)
             "mode": {"mode"},
             "permission-mode": {"permissionMode"},
             "atis-latch": {"atis"},
+            "cost-state": {"totalCostUSD", "totalAPIDuration", "totalAPIDurationWithoutRetries",
+                           "totalToolDuration", "totalLinesAdded", "totalLinesRemoved",
+                           "totalDuration", "startTime", "modelUsage", "hasUnknownModelCost"},
         }
         order = tuple(metadata_fields)
         previous = -1
@@ -89,7 +98,9 @@ def validate_qualification_tail(rows: list[dict[str, Any]], response_index: int)
                     for earlier in rows[:response_index]
                 ):
                     raise ValueError("QUALIFICATION_RESPONSE_NOT_FINAL")
-            elif not isinstance(row["atis"], str):
+            elif kind == "atis-latch" and not isinstance(row["atis"], str):
+                raise ValueError("QUALIFICATION_RESPONSE_NOT_FINAL")
+            elif kind == "cost-state" and not _native_cost_state(row, rows[response_index]):
                 raise ValueError("QUALIFICATION_RESPONSE_NOT_FINAL")
     message = rows[response_index].get("message")
     content = message.get("content") if isinstance(message, dict) else None
@@ -98,6 +109,29 @@ def validate_qualification_tail(rows: list[dict[str, Any]], response_index: int)
         for block in content
     ):
         raise ValueError("QUALIFICATION_RESPONSE_INVALID")
+
+
+def _native_cost_state(row: dict[str, Any], response: dict[str, Any]) -> bool:
+    """Validate numeric exit bookkeeping after the ordered terminal metadata."""
+    def nonnegative_cost(value: Any) -> bool:
+        return type(value) in (int, float) and value >= 0 and (type(value) is int or math.isfinite(value))
+
+    counters = ("totalAPIDuration", "totalAPIDurationWithoutRetries", "totalToolDuration",
+                "totalLinesAdded", "totalLinesRemoved", "totalDuration", "startTime")
+    if (not all(type(row[key]) is int and row[key] >= 0 for key in counters)
+            or not nonnegative_cost(row["totalCostUSD"])
+            or type(row["hasUnknownModelCost"]) is not bool):
+        return False
+    usage = row["modelUsage"]
+    model = response.get("message", {}).get("model")
+    if not isinstance(model, str) or not isinstance(usage, dict) or set(usage) != {model}:
+        return False
+    counts = {"inputTokens", "outputTokens", "thinkingTokens", "cacheReadInputTokens",
+              "cacheCreationInputTokens", "webSearchRequests"}
+    item = usage[model]
+    return (isinstance(item, dict) and set(item) == counts | {"costUSD"}
+            and all(type(item[key]) is int and item[key] >= 0 for key in counts)
+            and nonnegative_cost(item["costUSD"]))
 
 
 def _native_turn_duration(row: dict[str, Any], response: dict[str, Any]) -> bool:
