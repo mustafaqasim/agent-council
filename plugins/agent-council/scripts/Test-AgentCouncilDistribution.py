@@ -167,14 +167,13 @@ class DistributionTests(unittest.TestCase):
                 relative = path.relative_to(ROOT).as_posix()
                 if path.is_file() and "__pycache__" not in path.parts and not {"results", "local"}.intersection(path.relative_to(ROOT).parts) and path.suffix != ".pyc" and relative not in {"standards/behavioral-inventory.v1.json", "standards/model-qualifications/promotion.v1.json", "standards/model-qualifications/candidate-registry.v3.json"}:
                     required.add(relative)
-        required -= HISTORICAL_NATIVE_RECEIPTS
         self.assertEqual(required, inventory, "Behavioral inventory must cover exactly the distributable behavior files")
 
-    def test_archival_native_receipts_are_preserved_but_not_distributed(self):
+    def test_private_archival_receipts_are_absent_from_marketplace_source(self):
         inventory = set(load(ROOT / "standards/behavioral-inventory.v1.json")["paths"])
         self.assertFalse(inventory & HISTORICAL_NATIVE_RECEIPTS)
         for relative in HISTORICAL_NATIVE_RECEIPTS:
-            self.assertTrue((ROOT / relative).is_file(), "Historical evidence must remain unchanged in source")
+            self.assertFalse((ROOT / relative).exists(), "Private native receipts must not ship through marketplace source")
 
     def test_shared_readiness(self):
         shared = load(DOCS / "readiness.yaml")

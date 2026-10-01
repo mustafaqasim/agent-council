@@ -41,6 +41,34 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, str(HARNESS), *args], text=True, capture_output=True, check=False)
 
 
+def synthetic_legacy_receipts(root: Path) -> list[Path]:
+    """Exercise the historical v1 schema without distributing native evidence."""
+    paths = []
+    for index in (1, 2):
+        receipt = {
+            "schema_version": "agent-council.claude-qualification-receipt/v1",
+            "run_id": f"native-forward-run-{index}",
+            "session_id": str(uuid.UUID(int=index)),
+            "requested_model_id": "claude-opus-5-5",
+            "actual_model_id": "claude-opus-5-5",
+            "candidate_sha256": "a" * 64,
+            "evaluation_bundle_sha256": "b" * 64,
+            "transcript_sha256": str(index) * 64,
+            "clean_context": True,
+            "blind": True,
+            "scenario_results": [
+                {"scenario_id": scenario, "status": "passed", "missing_claims": [],
+                 "additional_claims": [], "disallowed_additional_claims": []}
+                for scenario in EXPECTED_CLAIMS
+            ],
+            "result": "passed",
+        }
+        path = root / f"synthetic-legacy-receipt-{index}.json"
+        path.write_text(json.dumps(receipt), encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
 def transcript(path: Path, model: str, result: dict[str, object], session_id: str, workspace: Path, *, run_id: str = "native-forward-run-1", effort: str | None = "high", include_native_records: bool = True, prior_prompt: bool = False, prohibited_tool: bool = False, external_path: bool = False, failed_read: bool = False) -> None:
     resolved = workspace.resolve()
     rows: list[dict[str, object]] = []
@@ -328,7 +356,7 @@ def test_current_identity() -> None:
                 require("QUALIFICATION_RECEIPT_INVALID" in str(error), f"{label} effort rejected for wrong reason: {error}")
             else:
                 raise AssertionError(f"current qualification accepted {label} effort")
-        historical = [ROOT / "standards/model-qualifications" / f"claude-opus-5-5-native-run-{index}.v1.json" for index in (1, 2)]
+        historical = synthetic_legacy_receipts(Path(temporary))
         try:
             harness.validate_pair(argparse.Namespace(receipt=historical, require_current=True))
         except ValueError as error:
@@ -411,10 +439,26 @@ def test_current_identity() -> None:
     packaged = json.loads(current.stdout)
     require(set(legacy_paths) <= set(packaged["paths"]), "current inventory omits legacy behavior")
     require({"hooks/hooks.json", "hooks/agent-council-routing.sh", "codex/routing-directive.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "scripts/ClaudeQualificationHarness.py"} <= set(packaged["paths"]), "current inventory omits activation or identity behavior")
-    historical = ROOT / "standards" / "model-qualifications"
-    pair = run("validate-pair", "--receipt", str(historical / "claude-opus-5-5-native-run-1.v1.json"), "--receipt", str(historical / "claude-opus-5-5-native-run-2.v1.json"))
-    require(pair.returncode == 0, f"historical Opus receipt validation changed: {pair.stdout} {pair.stderr}")
-    require(json.loads(pair.stdout)["candidate_sha256"] == "529adba3cacb3d099c468c59f880f33100b6a991e364c4c88219c186e7899cd2", "historical evidence was rewritten")
+    with tempfile.TemporaryDirectory(prefix="agent-council-legacy-schema-") as temporary:
+        historical = synthetic_legacy_receipts(Path(temporary))
+        pair = run("validate-pair", "--receipt", str(historical[0]), "--receipt", str(historical[1]))
+        require(pair.returncode == 0, f"legacy receipt validation changed: {pair.stdout} {pair.stderr}")
+        result = json.loads(pair.stdout)
+        require(result["schema_version"] == "agent-council.claude-qualification-pair/v1" and result["candidate_sha256"] == "a" * 64 and result["effort"] == "high", "legacy receipt schema or default effort changed")
+        for field, value, expected_error in (
+            ("session_id", str(uuid.UUID(int=1)), "CONTEXTS_NOT_FRESH"),
+            ("candidate_sha256", "c" * 64, "CANDIDATE_MISMATCH"),
+            ("evaluation_bundle_sha256", "c" * 64, "CANDIDATE_MISMATCH"),
+            ("actual_model_id", "wrong-model", "MODEL_IDENTITY_MISMATCH"),
+            ("scenario_results", [], "RECEIPT_INVALID"),
+            ("blind", False, "RUN_FAILED"),
+        ):
+            historical = synthetic_legacy_receipts(Path(temporary))
+            altered = json.loads(historical[1].read_text())
+            altered[field] = value
+            historical[1].write_text(json.dumps(altered))
+            rejected = run("validate-pair", "--receipt", str(historical[0]), "--receipt", str(historical[1]))
+            require(rejected.returncode != 0 and expected_error in rejected.stdout, f"legacy validation accepted invalid {field}: {rejected.stdout}")
 
 
 def _test_v3_bindings_candidate() -> None:
@@ -559,8 +603,9 @@ def _test_v3_bindings_candidate() -> None:
             require(mismatch.returncode != 0 and "BINDING_ASSERTION_MISMATCH" in mismatch.stdout, "v3 accepted wrong model assertion")
         mixed = run("validate-pair", "--receipt", str(root / "claude-code-v3-ultimate-1.json"), "--receipt", str(root / "claude-code-v3-operational-2.json"))
         require(mixed.returncode != 0, "v3 pair accepted mixed bindings")
-        mixed_version = run("validate-pair", "--receipt", str(root / "claude-code-v3-ultimate-1.json"), "--receipt", str(ROOT / "standards/model-qualifications/claude-opus-5-5-native-run-2.v1.json"))
-        require(mixed_version.returncode != 0, "v3 pair accepted a historical receipt")
+        historical = synthetic_legacy_receipts(root)
+        mixed_version = run("validate-pair", "--receipt", str(root / "claude-code-v3-ultimate-1.json"), "--receipt", str(historical[1]))
+        require(mixed_version.returncode != 0 and "QUALIFICATION_RECEIPT_INVALID" in mixed_version.stdout, "v3 pair accepted a historical receipt")
 
 
 def test_v3_bindings() -> None:

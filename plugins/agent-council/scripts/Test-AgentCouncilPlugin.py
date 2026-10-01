@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from ClaudeQualificationHarness import CANDIDATE_FILES, current_release_binding
+from ClaudeQualificationHarness import current_release_binding
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSERTION_COUNT = 0
@@ -29,18 +29,6 @@ def require(condition: bool, message: str) -> None:
 def canonical_sha256(value: object) -> str:
     serialized = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(serialized).hexdigest()
-
-
-def git_candidate_digest(repository_root: Path, commit: str) -> str:
-    value = hashlib.sha256()
-    for relative in sorted(CANDIDATE_FILES):
-        name = relative.encode("utf-8")
-        content = subprocess.run(["git", "show", f"{commit}:plugins/agent-council/{relative}"], cwd=repository_root, capture_output=True, check=True).stdout
-        value.update(len(name).to_bytes(8, "big"))
-        value.update(name)
-        value.update(len(content).to_bytes(8, "big"))
-        value.update(content)
-    return value.hexdigest()
 
 
 def main() -> int:
@@ -59,9 +47,6 @@ def main() -> int:
     qualification_plan = (ROOT / "standards" / "model-qualifications" / "provider-catalog-refresh.v3.yaml").read_text(encoding="utf-8")
     initial_claude_designation = json.loads((ROOT / "standards" / "model-qualifications" / "initial-claude-code-designation.v2.yaml").read_text(encoding="utf-8"))
     opus_55_correction = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-catalog-correction.v1.yaml").read_text(encoding="utf-8"))
-    opus_55_qualification = json.loads((ROOT / "standards" / "model-qualifications" / "claude-opus-5-5-native-qualification.v1.yaml").read_text(encoding="utf-8"))
-    opus_55_run_paths = [ROOT / "standards" / "model-qualifications" / f"claude-opus-5-5-native-run-{index}.v1.json" for index in (1, 2)]
-    opus_55_run_receipts = [json.loads(path.read_text(encoding="utf-8")) for path in opus_55_run_paths]
     integration = (ROOT / "skills" / "agent-council" / "references" / "compound-engineering.yaml").read_text(encoding="utf-8")
     forward_tests = (ROOT / "skills" / "agent-council" / "references" / "forward-tests.yaml").read_text(encoding="utf-8")
     openai_agent = (ROOT / "skills" / "agent-council" / "agents" / "openai.yaml").read_text(encoding="utf-8")
@@ -146,16 +131,6 @@ def main() -> int:
     require(initial_claude_designation["recorded_at"] == "2026-09-21T00:00:00Z" and len(initial_operational) == 1 and initial_operational[0]["model_id"] == "claude-opus-5", "initial Claude designation must not be backdated to Opus 5.5")
     require(opus_55_correction["recorded_at"] == "2026-09-24T03:42:36Z" and opus_55_correction["subject"]["status"] == "candidate" and opus_55_correction["evidence"]["official_release_url"] == "https://platform.claude.com/docs/en/models/opus-5-5/overview", "Opus 5.5 correction record is incomplete")
     require("Two fresh native qualification runs on identical candidate bytes." in opus_55_correction["promotion_requirements"] and "Each run records the observed Claude Code model identity as claude-opus-5-5." in opus_55_correction["promotion_requirements"], "Opus 5.5 promotion requirements are incomplete")
-    require(opus_55_qualification["pair_result"] == "passed", "historical Opus 5.5 qualification pair is missing")
-    require(len(opus_55_qualification["native_runs"]) == 2 and len({run["session_id"] for run in opus_55_qualification["native_runs"]}) == 2 and all(run["actual_model_id"] == "claude-opus-5-5" and run["clean_context"] is True and run["blind"] is True and run["result"] == "passed" for run in opus_55_qualification["native_runs"]), "Opus 5.5 native qualification receipts are invalid")
-    pair_validation = subprocess.run([sys.executable, str(ROOT / "scripts" / "ClaudeQualificationHarness.py"), "validate-pair", "--receipt", str(opus_55_run_paths[0]), "--receipt", str(opus_55_run_paths[1])], text=True, capture_output=True, check=False)
-    require(pair_validation.returncode == 0 and json.loads(pair_validation.stdout)["result"] == "passed", "persisted Opus 5.5 run receipts do not form a valid pair")
-    for summary, receipt, path in zip(opus_55_qualification["native_runs"], opus_55_run_receipts, opus_55_run_paths):
-        require(summary["receipt_ref"] == path.relative_to(ROOT).as_posix() and summary["receipt_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest(), "Opus 5.5 aggregate receipt does not bind its persisted run receipt")
-        require(all(summary[key] == receipt[key] for key in ("run_id", "session_id", "actual_model_id", "transcript_sha256", "clean_context", "blind", "result")), "Opus 5.5 aggregate receipt disagrees with its persisted run receipt")
-        require(receipt["candidate_sha256"] == opus_55_qualification["candidate"]["candidate_sha256"] and receipt["evaluation_bundle_sha256"] == opus_55_qualification["candidate"]["evaluation_bundle_sha256"], "Opus 5.5 persisted run receipt is bound to different qualification bytes")
-    if source_checkout:
-        require(git_candidate_digest(repository_root, opus_55_qualification["candidate"]["source_commit"]) == opus_55_qualification["candidate"]["candidate_sha256"], "Opus 5.5 source commit does not contain the qualified candidate bytes")
     require('operational_intelligence: "claude-code-v2-operational-opus-5-5 -> claude-opus-5-5"' in adapters and "claude-code-v2-operational -> claude-opus-5, superseded after native qualification" in adapters, "Claude adapter promotion is invalid")
     require('ordinary_agent: "provider_attested exact model and effort after plugin subagent selection"' in adapters and 'native_qualification: "explicit full-model selection plus provider-attested transcript identity"' in adapters, "Claude adapter assurance paths are conflated")
     require("observe a native Agent invocation" in qualification_plan and "neither proves a native Agent dispatch" in qualification_plan, "Claude qualification plan omits actual subagent execution")
