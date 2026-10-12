@@ -92,8 +92,18 @@ class NativeEvalTests(unittest.TestCase):
                 "pass": [
                     "Select the active qualified same-tier fallback. No governed case is needed.",
                     "Use the same-tier fallback first. A governed case is not needed. Do not select a higher tier.",
+                    "Select first: the active qualified fallback in the same tier, worker_intelligence. No governed case is needed.",
+                    "Use an active fallback in the same tier first. No governed case is needed.",
+                    "**Select first:** the active qualified fallback in the same tier. No governed case is needed.",
+                    "Do not use the debugger. Select the qualified same-tier fallback. No governed case is needed.",
                 ],
                 "fail": [
+                    "Do not use the active qualified same-tier fallback. No governed case is needed.",
+                    "Never select the same-tier fallback. No governed case is needed.",
+                    "Do not choose the active fallback in the same tier. No governed case is needed.",
+                    "Select the same-tier fallback. Never use the fallback in the same tier. No governed case is needed.",
+                    "No same-tier fallback is selected. No governed case is needed.",
+                    "Select the same-tier fallback. The same-tier fallback is not selected. No governed case is needed.",
                     "Same-tier fallback is available. No governed case is needed. Select the higher-tier model.",
                     "Select the same-tier fallback. No governed case is needed. Instead, choose a higher tier.",
                     "Use the same-tier fallback, but select the higher-tier model. No governed case is needed.",

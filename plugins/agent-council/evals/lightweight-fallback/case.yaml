@@ -32,7 +32,7 @@
       "type": "regex",
       "name": "same-tier-fallback",
       "target": "last_message",
-      "pattern": "(?:select|choose|use|prefer)\\s+(?:the\\s+)?(?:active\\s+)?(?:qualified\\s+)?same[ -]tier\\s+fallback|same[ -]tier\\s+fallback\\s+(?:is\\s+)?(?:selected|first|takes priority)",
+      "pattern": "\\A(?![\\s\\S]*\\b(?:do[ \\t]+not|don't|never|must[ \\t]+not|should[ \\t]+not)[ \\t]+(?:select|choose|use|prefer)(?:[ \\t]+first)?[ \\t:*]+(?:(?:the|an?|active|qualified)[ \\t]+){0,4}(?:same[ -]tier[ \\t]+fallback|fallback[ \\t]+in[ \\t]+(?:the[ \\t]+)?same[ \\t]+tier)\\b)(?![\\s\\S]*\\b(?:no[ \\t]+(?:(?:active|qualified)[ \\t]+){0,2}same[ -]tier[ \\t]+fallback[ \\t]+(?:is[ \\t]+)?(?:selected|first|takes priority)|same[ -]tier[ \\t]+fallback[ \\t]+(?:is[ \\t]+)?(?:not|never)[ \\t]+(?:selected|first|given priority))\\b)[\\s\\S]*?(?:\\b(?:select|choose|use|prefer)(?:[ \\t]+first)?[ \\t:*]+(?:(?:the|an?|active|qualified)[ \\t]+){0,4}(?:same[ -]tier[ \\t]+fallback|fallback[ \\t]+in[ \\t]+(?:the[ \\t]+)?same[ \\t]+tier)\\b|same[ -]tier[ \\t]+fallback[ \\t]+(?:is[ \\t]+)?(?:selected|first|takes priority)\\b)",
       "flags": "i",
       "match": "contains"
     },
