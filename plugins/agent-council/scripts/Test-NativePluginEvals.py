@@ -52,6 +52,38 @@ class NativeEvalTests(unittest.TestCase):
             with self.subTest(response=response):
                 self.assertIsNone(re.search(grader["pattern"], response, re.I))
 
+    def test_native_method_accepts_built_in_method_noun_not_keyword_only(self):
+        # Campaign slot 01 false negative: "built-in review process" is the same
+        # method claim as "built-in workflow". The marker must modify a method
+        # noun within its own noun phrase; bare markers and non-method objects
+        # stay rejected, and negated or substring lookalikes do not qualify.
+        case = next(case for case in self.suite["cases"] if case["name"] == "ce-absence-native-method")
+        grader = next(grader for grader in case["graders"] if grader["name"] == "native-method")
+        for response in ("The steps below use only Council's built-in review process.",
+                         "Council's built-in review method applies.",
+                         "Use the built-in process for this review.",
+                         "These checks follow the built-in evidence gates.",
+                         "Rely on the built-in independent qualified review.",
+                         "Outline the built in procedure.",
+                         "No built-in parser is needed. Use the native review method.",
+                         "Do not use the built-in debugger. Use the standalone review workflow.",
+                         "Use the built-in review process. No built-in debugger is required."):
+            with self.subTest(response=response):
+                self.assertIsNotNone(re.search(grader["pattern"], response, re.I))
+        for response in ("Use the built-in.", "It is built-in.",
+                         "Council's built-in parser validates syntax.",
+                         "The built-in extension handles formatting.",
+                         "The reviewer is built-in.",
+                         "Choose the non-native workflow.",
+                         "An alternative process applies.",
+                         "Use built-in tooling for the review process.",
+                         "Council has a built-in parser that checks syntax.",
+                         "Use built-in tooling, then review.",
+                         "No built-in review process exists.",
+                         "Do not use the built-in review process."):
+            with self.subTest(response=response):
+                self.assertIsNone(re.search(grader["pattern"], response, re.I))
+
     def test_critical_response_graders_reject_contradictions(self):
         # Execute the actual case regexes, not copies of their patterns. Tool
         # events remain native-only; these fixtures isolate response scoring.

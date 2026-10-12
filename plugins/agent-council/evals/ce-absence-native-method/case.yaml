@@ -41,7 +41,7 @@
       "type": "regex",
       "name": "native-method",
       "target": "last_message",
-      "pattern": "native|standalone|\\bbuilt[- ]in (?:workflow|steps)\\b",
+      "pattern": "\\A(?![\\s\\S]*\\b(?:no\\s+|(?:do\\s+not|don't|never)\\s+use\\s+(?:the\\s+)?)built[- ]in[ \\t]+(?:(?:own|evidence|independent|qualified)[ \\t]+){0,2}(?:reviews?|workflows?|steps?|process(?:es)?|methods?|procedures?|approaches?|mechanisms?|pipelines?|gates?|checks?|protocols?|routines?|practices?)\\b)[\\s\\S]*?(?:(?<![\\w-])native\\b|(?<![\\w-])standalone\\b|(?<![\\w-])built[- ]in[ \\t]+(?:(?:own|evidence|independent|qualified)[ \\t]+){0,2}(?:reviews?|workflows?|steps?|process(?:es)?|methods?|procedures?|approaches?|mechanisms?|pipelines?|gates?|checks?|protocols?|routines?|practices?)\\b)",
       "flags": "i",
       "match": "contains"
     },
