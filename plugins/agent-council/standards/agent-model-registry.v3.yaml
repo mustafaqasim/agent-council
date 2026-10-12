@@ -6,10 +6,10 @@
   },
   "provider_states": {
     "codex": {
-      "council_status": "fail_closed_until_qualified"
+      "council_status": "qualified"
     },
     "claude_code": {
-      "council_status": "fail_closed_until_qualified"
+      "council_status": "qualified"
     }
   },
   "bindings": [
@@ -18,7 +18,7 @@
       "provider": "codex",
       "model_id": "gpt-6-astra",
       "tier": "ultimate_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "xhigh",
@@ -29,14 +29,20 @@
           "xhigh"
         ]
       },
-      "binding_sha256": "32883e363748f195b14c72c87f59d7a669d1ffe21d5b536b0a4e91e6456d5f9a"
+      "binding_sha256": "2e6a9a4e4c915026c1b8f642163bfc312a87fef07e460674236ebe3af5c0f68f",
+      "qualified_roles": [
+        "worker_intelligence",
+        "technical_tactical_intelligence",
+        "operational_intelligence",
+        "ultimate_intelligence"
+      ]
     },
     {
       "binding_id": "codex-v3-operational",
       "provider": "codex",
       "model_id": "gpt-6-sol",
       "tier": "operational_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "xhigh",
@@ -47,14 +53,19 @@
           "xhigh"
         ]
       },
-      "binding_sha256": "4180fb4783f9bf07491e8ca83209e2d52c684983b2edc7105b5eeedb86431c7f"
+      "binding_sha256": "017fceea266ddf1956203747525dc469573a348dccc28f37f091c0e5f40cea4c",
+      "qualified_roles": [
+        "worker_intelligence",
+        "technical_tactical_intelligence",
+        "operational_intelligence"
+      ]
     },
     {
       "binding_id": "codex-v3-technical",
       "provider": "codex",
       "model_id": "gpt-6-sol",
       "tier": "technical_tactical_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "medium",
@@ -65,14 +76,18 @@
           "xhigh"
         ]
       },
-      "binding_sha256": "4a95bf5084b7f487b303c6375f9a5c97cb324ae9831d4affa73abdd704a05f1b"
+      "binding_sha256": "487e45a0f33a2570f96dede9d92f1f364a370841339640434f125775f064b560",
+      "qualified_roles": [
+        "worker_intelligence",
+        "technical_tactical_intelligence"
+      ]
     },
     {
       "binding_id": "codex-v3-worker",
       "provider": "codex",
       "model_id": "gpt-6-luna",
       "tier": "worker_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "low",
@@ -83,14 +98,17 @@
           "xhigh"
         ]
       },
-      "binding_sha256": "31eed658732870e848d313a8799826877f91924ab199523f33d11ac2cf745174"
+      "binding_sha256": "aca5c220d5923955a8b32317961190bb1484d4fb5823b655c88291e79d583ef9",
+      "qualified_roles": [
+        "worker_intelligence"
+      ]
     },
     {
       "binding_id": "claude-code-v3-ultimate",
       "provider": "claude_code",
       "model_id": "claude-opus-5-5",
       "tier": "ultimate_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "high",
@@ -98,14 +116,20 @@
           "high"
         ]
       },
-      "binding_sha256": "66b41be364ff49141252146447acb83b34286a5dc908fb21c86fb4d506027859"
+      "binding_sha256": "1c220b716f849998e873b316e157850a44863522fac775e43d3bf3c2db0668b5",
+      "qualified_roles": [
+        "worker_intelligence",
+        "technical_tactical_intelligence",
+        "operational_intelligence",
+        "ultimate_intelligence"
+      ]
     },
     {
       "binding_id": "claude-code-v3-operational",
       "provider": "claude_code",
       "model_id": "claude-opus-5-5",
       "tier": "operational_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "medium",
@@ -113,14 +137,19 @@
           "medium"
         ]
       },
-      "binding_sha256": "6ddd43cc0567b21876e5feb37722e88748e21885dbd70194581586efe02dcb56"
+      "binding_sha256": "048cb6880fe7000c77455db3d099f251a72c3562a8b1d61b6fdf76f6646f8e5b",
+      "qualified_roles": [
+        "worker_intelligence",
+        "technical_tactical_intelligence",
+        "operational_intelligence"
+      ]
     },
     {
       "binding_id": "claude-code-v3-technical",
       "provider": "claude_code",
       "model_id": "claude-opus-5-5",
       "tier": "technical_tactical_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": true,
         "default_effort": "medium",
@@ -128,21 +157,28 @@
           "medium"
         ]
       },
-      "binding_sha256": "3dfb0ae3e9ed27723e39cd642c29b13449a94ac33e9b438e9e91cc7497148fa8"
+      "binding_sha256": "28e3c98dcd9ec92a34b0d951e5e0effdac123d29a62eabab1503aa08de3fc9f9",
+      "qualified_roles": [
+        "worker_intelligence",
+        "technical_tactical_intelligence"
+      ]
     },
     {
       "binding_id": "claude-code-v3-worker",
       "provider": "claude_code",
       "model_id": "claude-haiku-4-5-20251001",
       "tier": "worker_intelligence",
-      "status": "candidate",
+      "status": "qualified",
       "reasoning": {
         "supported": false,
         "default_effort": null,
         "allowed_efforts": []
       },
-      "binding_sha256": "369d787c1890f030e46effeebaf07b652846f610954fe90c087eaa2924c14ada"
+      "binding_sha256": "132f5ed9530e2eb410a7744ee169923faa8328683cd1b872d11216d1ad5a5084",
+      "qualified_roles": [
+        "worker_intelligence"
+      ]
     }
   ],
-  "registry_sha256": "d85f510c23039a9c6f60bf4b05acde8d91ebb622fcdcbea7613d6259c4035a1d"
+  "registry_sha256": "935944094f064ad9c3b37dd21d09ea4c2fba311189ec32c7f4e269a0cb86a24a"
 }

@@ -1,0 +1,148 @@
+{
+  "schema_version": "agent-council.model-registry/v3",
+  "registry_version": "v3",
+  "reasoning": {
+    "policy": "per_binding"
+  },
+  "provider_states": {
+    "codex": {
+      "council_status": "fail_closed_until_qualified"
+    },
+    "claude_code": {
+      "council_status": "fail_closed_until_qualified"
+    }
+  },
+  "bindings": [
+    {
+      "binding_id": "codex-v3-ultimate",
+      "provider": "codex",
+      "model_id": "gpt-6-astra",
+      "tier": "ultimate_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "xhigh",
+        "allowed_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "binding_sha256": "32883e363748f195b14c72c87f59d7a669d1ffe21d5b536b0a4e91e6456d5f9a"
+    },
+    {
+      "binding_id": "codex-v3-operational",
+      "provider": "codex",
+      "model_id": "gpt-6-sol",
+      "tier": "operational_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "xhigh",
+        "allowed_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "binding_sha256": "4180fb4783f9bf07491e8ca83209e2d52c684983b2edc7105b5eeedb86431c7f"
+    },
+    {
+      "binding_id": "codex-v3-technical",
+      "provider": "codex",
+      "model_id": "gpt-6-sol",
+      "tier": "technical_tactical_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "medium",
+        "allowed_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "binding_sha256": "4a95bf5084b7f487b303c6375f9a5c97cb324ae9831d4affa73abdd704a05f1b"
+    },
+    {
+      "binding_id": "codex-v3-worker",
+      "provider": "codex",
+      "model_id": "gpt-6-luna",
+      "tier": "worker_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "low",
+        "allowed_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "binding_sha256": "31eed658732870e848d313a8799826877f91924ab199523f33d11ac2cf745174"
+    },
+    {
+      "binding_id": "claude-code-v3-ultimate",
+      "provider": "claude_code",
+      "model_id": "claude-opus-5-5",
+      "tier": "ultimate_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "high",
+        "allowed_efforts": [
+          "high"
+        ]
+      },
+      "binding_sha256": "66b41be364ff49141252146447acb83b34286a5dc908fb21c86fb4d506027859"
+    },
+    {
+      "binding_id": "claude-code-v3-operational",
+      "provider": "claude_code",
+      "model_id": "claude-opus-5-5",
+      "tier": "operational_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "medium",
+        "allowed_efforts": [
+          "medium"
+        ]
+      },
+      "binding_sha256": "6ddd43cc0567b21876e5feb37722e88748e21885dbd70194581586efe02dcb56"
+    },
+    {
+      "binding_id": "claude-code-v3-technical",
+      "provider": "claude_code",
+      "model_id": "claude-opus-5-5",
+      "tier": "technical_tactical_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": true,
+        "default_effort": "medium",
+        "allowed_efforts": [
+          "medium"
+        ]
+      },
+      "binding_sha256": "3dfb0ae3e9ed27723e39cd642c29b13449a94ac33e9b438e9e91cc7497148fa8"
+    },
+    {
+      "binding_id": "claude-code-v3-worker",
+      "provider": "claude_code",
+      "model_id": "claude-haiku-4-5-20251001",
+      "tier": "worker_intelligence",
+      "status": "candidate",
+      "reasoning": {
+        "supported": false,
+        "default_effort": null,
+        "allowed_efforts": []
+      },
+      "binding_sha256": "369d787c1890f030e46effeebaf07b652846f610954fe90c087eaa2924c14ada"
+    }
+  ],
+  "registry_sha256": "d85f510c23039a9c6f60bf4b05acde8d91ebb622fcdcbea7613d6259c4035a1d"
+}

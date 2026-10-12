@@ -1,0 +1,19 @@
+version: 0.9.0
+verified_at: "2026-10-12T23:24:40+11:00"
+candidate_commit: cb5ba4ec462a6ef476fc3761d08f7cabf100c571
+candidate_sha256: e11cdb84b42283900e3a587aad518821ed5af617168bb7c278ce9424e3e58f73
+promoted_sha256: ba21a1bb9c48959716485a04b611f7b89f2300e7bf8167b907458d60b30c9903
+public_proof_sha256: 5649417c7824a613dfb96661be19e51b9a6a9698f686c14f3ac2016e1ea14a67
+native_qualification: {exact_bindings: 8, fresh_pairs: 8, independent_probes: 8, result: passed}
+offline_checks: {passed: 25, failed: 0}
+routing_pilot: {score: 1, partial: false}
+native_campaign: {cases: 16, rounds: 3, slots: 48, arms: 96, plugin_passed: 48, baseline_passed: 12, threshold: 1, partial_results: 0, model: claude-opus-5-5, cost_usd: '10.00472079999999991', cap_usd: '20', result: passed}
+independent_reviews: {source: GO, proof_privacy: GO, sealed_campaign: GO}
+public_package_files: 102
+evidence_assurance: structural_only
+provider_authenticity_verified: false
+full_context_blindness_verified: false
+directory_acceptance: pending
+windows_behavior: unqualified
+frozen_documentation: "Package documentation retains candidate-stage pending wording. This release record supersedes that status without modifying qualified package bytes."
+publication: pending
