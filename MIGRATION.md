@@ -1,12 +1,28 @@
 # Migration
 
+## Version 0.9.0
+
+The installable package now includes portable identity metadata, its own README and MIT license, and matching host manifests. The repository root remains a marketplace. Existing host hooks retain both SessionStart and UserPromptSubmit, Codex PLUGIN_ROOT precedence, Claude fallback, and quoted paths. Anthropic directory compatibility of the dual-host wrapper remains pending; Claude Code strict validation does not establish directory acceptance.
+
+The skill keeps scope, reentry, risk precedence, exclusions, and route selection in the entry point. Lightweight and governed instructions load from separate references. New governed cases pin both references. Historical cases and native qualification receipts are not rewritten, and the legacy six-file candidate digest keeps its original meaning.
+
+Current release evidence uses the versioned behavioral inventory, including activation, traces, manifests, policy, native evals, and validation helpers. The new v3 registry starts with every binding as a candidate. New cases cannot fall back to v2; historical pinned v2 cases remain readable. For each v3 Claude binding, prepare two fresh runs with `ClaudeQualificationHarness.py prepare --binding-id <exact-binding-id>`, score the native transcripts, and validate the pair. Each binding also needs an exact packaged Agent probe. Claude requires provider-attested model identity and matching native effort evidence.
+
+Codex also supports an approved lower-assurance path: `CodexQualificationHarness.py score --host-selected` checks retained parent and child exports against the local native session store. Two passing fresh runs, a validated pair, and a third independent native probe can support promotion as `identity_assurance: host_selected`. Promotion replays dispatch linkage and scoring from the frozen artifacts. This establishes structural consistency of explicit host selection, not provider-resolved identity or host authenticity. Ordinary `client_configuration` receipts remain ineligible for promotion. The implementation alone qualifies no binding; all current candidates still need fresh native evidence.
+
+Qualification of only the default effort does not authorize other efforts. Promotion can qualify one binding without waiting for the other provider, but its proof must cover every live qualified binding in that registry snapshot. An existing qualified binding cannot enter a new promotion archive without prior-proof lineage. Any change to inventoried bytes invalidates earlier candidate-bound evidence.
+
+Tracing remains disabled by default. Native eval release runs require verified promotion and use a frozen package copy with publication disabled. Do not promote 0.9.0 from offline checks or historical receipts alone. Directory submissions, publication, installation, and fresh paid native runs are separate actions.
+
+Existing governed cases retain their pinned registry, including after `cycle-start`. To adopt the installed registry, run `python3 plugins/agent-council/scripts/Migrate-AgentCouncilCase.py --source-case-root <old-case> --case-root <new-case> --project-root <project> --case-id <new-id>`. This creates a separate successor, preserves the historical case, and records its identity in `migration-provenance.json`. It retains the route and engineering input hashes but carries no approvals, dispatches, or evidence. Supply `--candidate-json` when the engineering inputs have also changed. Fresh capability observations and all applicable qualification and closure gates remain required.
+
 ## Version 0.8.2
 
 Version 0.8.2 promotes Claude Opus 5.5 to the Claude Code operational tier after two clean, blind native qualification runs passed GFT01 through GFT12 on identical candidate bytes. Claude Opus 5 is revoked as the superseded operational binding.
 
 Claude Code Agent aliases are no longer treated as proof of a versioned model ID. Ordinary delegation must observe the exact provider model identity. Native qualification uses fresh interactive sessions with an exact full model ID, safe mode, restricted workspace access, distinct session IDs, and no answer key in the evaluator workspace.
 
-Existing governed cases retain their pinned registry. Open a new cycle before using the new binding.
+Existing governed cases retain their pinned registry. Start a new case to use a newly installed binding.
 
 ## Version 0.8.1
 

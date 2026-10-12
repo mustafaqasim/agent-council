@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.1",
+  "name": "read-only-architecture-negative",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "read-only-architecture-negative"
+  ],
+  "execution": {
+    "prompt": "Assess this architecture in three sentences: a stateless API writes to a queue, and workers write to a database. Explain the main reliability tradeoff. This is a read-only assessment of an existing design; no implementation, material design decision, or changes are requested. Keep it local and do not delegate.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "regex",
+      "name": "architecture-answer",
+      "target": "last_message",
+      "pattern": "queue|worker",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-governed-route",
+      "target": "last_message",
+      "pattern": "governed case R[123]",
+      "flags": "i",
+      "match": "not_contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-delegation",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

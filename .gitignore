@@ -5,3 +5,6 @@ __pycache__/
 .agent/council/
 .agent-council.lock
 *.tmp
+.agent/release-local/
+plugins/agent-council/evals/results/
+plugins/agent-council/evals/local/

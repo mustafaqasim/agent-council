@@ -1,0 +1,529 @@
+{
+  "$defs": {
+    "decision_input": {
+      "additionalProperties": false,
+      "properties": {
+        "activation_source": {
+          "enum": [
+            "explicit",
+            "skill",
+            "host_instruction",
+            "unknown"
+          ]
+        },
+        "exclusion_codes": {
+          "items": {
+            "enum": [
+              "conversational",
+              "known_cause_reversible",
+              "ordinary_operation",
+              "out_of_scope",
+              "overhead_exceeds_benefit",
+              "read_only",
+              "reentry_denied",
+              "single_step",
+              "tightly_coupled",
+              "trivial",
+              "user_local_only"
+            ]
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "fallback_codes": {
+          "items": {
+            "enum": [
+              "direct_execution",
+              "higher_tier",
+              "none",
+              "same_tier"
+            ]
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "limitation_codes": {
+          "items": {
+            "enum": [
+              "authority_required",
+              "effort_unavailable",
+              "host_unknown",
+              "identity_unobservable",
+              "model_unavailable",
+              "no_qualified_binding",
+              "tool_unavailable"
+            ]
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "method_ids": {
+          "items": {
+            "enum": [
+              "acpl-lab",
+              "ce-brainstorm",
+              "ce-code-review",
+              "ce-debug",
+              "ce-plan",
+              "ce-pov",
+              "ce-work",
+              "direct",
+              "governed",
+              "lightweight"
+            ]
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "observed_effort": {
+          "enum": [
+            "high",
+            "low",
+            "max",
+            "medium",
+            "minimal",
+            "none",
+            "ultra",
+            "xhigh",
+            null
+          ]
+        },
+        "observed_model": {
+          "enum": [
+            "claude-fable-5-1",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-5-5",
+            "claude-sonnet-5",
+            "gpt-5.6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-6-astra",
+            "gpt-6-luna",
+            "gpt-6-sol",
+            null
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "blocked",
+            "direct_execution",
+            "governed_r1",
+            "governed_r2",
+            "governed_r3",
+            "lightweight_routing",
+            "skipped",
+            "unknown"
+          ]
+        },
+        "plugin_ids": {
+          "items": {
+            "enum": [
+              "acpl-cyber-range",
+              "agent-council",
+              "compound-engineering",
+              "deslop-content",
+              "frontend-design",
+              "openai-docs"
+            ]
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "requested_effort": {
+          "enum": [
+            "high",
+            "low",
+            "max",
+            "medium",
+            "minimal",
+            "none",
+            "ultra",
+            "xhigh",
+            null
+          ]
+        },
+        "requested_model": {
+          "enum": [
+            "claude-fable-5-1",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-5-5",
+            "claude-sonnet-5",
+            "gpt-5.6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-6-astra",
+            "gpt-6-luna",
+            "gpt-6-sol",
+            null
+          ]
+        },
+        "requested_role": {
+          "enum": [
+            "arbiter",
+            "builder",
+            "investigator",
+            "operational_intelligence",
+            "orchestrator",
+            "reviewer",
+            "technical_tactical_intelligence",
+            "ultimate_intelligence",
+            "worker_intelligence",
+            null
+          ]
+        },
+        "session_token": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trigger_codes": {
+          "items": {
+            "enum": [
+              "acceptance_change",
+              "architecture_change",
+              "authority_change",
+              "automation_repair",
+              "delegation_benefit",
+              "lifecycle_change",
+              "material_design",
+              "qualification_failure",
+              "repeated_failure",
+              "safety_change",
+              "shared_contract_change",
+              "uncertain_composition",
+              "unexpected_failure",
+              "updater_change"
+            ]
+          },
+          "maxItems": 16,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "agent-council.decision-trace/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "else": {
+        "properties": {
+          "activation_source": {
+            "enum": [
+              "explicit",
+              "skill",
+              "host_instruction",
+              "unknown"
+            ]
+          },
+          "evidence_source": {
+            "const": "agent_reported"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "event_kind": {
+            "const": "hook_observation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "activation_source": {
+            "enum": [
+              "session_start_hook",
+              "user_prompt_submit_hook"
+            ]
+          },
+          "evidence_source": {
+            "const": "hook_observed"
+          },
+          "outcome": {
+            "const": "unknown"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "activation_source": {
+      "enum": [
+        "explicit",
+        "host_instruction",
+        "session_start_hook",
+        "skill",
+        "unknown",
+        "user_prompt_submit_hook"
+      ]
+    },
+    "event_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "event_kind": {
+      "enum": [
+        "agent_decision",
+        "hook_observation"
+      ]
+    },
+    "evidence_source": {
+      "enum": [
+        "agent_reported",
+        "hook_observed"
+      ]
+    },
+    "exclusion_codes": {
+      "items": {
+        "enum": [
+          "conversational",
+          "known_cause_reversible",
+          "ordinary_operation",
+          "out_of_scope",
+          "overhead_exceeds_benefit",
+          "read_only",
+          "reentry_denied",
+          "single_step",
+          "tightly_coupled",
+          "trivial",
+          "user_local_only"
+        ]
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "fallback_codes": {
+      "items": {
+        "enum": [
+          "direct_execution",
+          "higher_tier",
+          "none",
+          "same_tier"
+        ]
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "host_kind": {
+      "enum": [
+        "ambiguous",
+        "claude_code",
+        "codex",
+        "unknown"
+      ]
+    },
+    "limitation_codes": {
+      "items": {
+        "enum": [
+          "authority_required",
+          "effort_unavailable",
+          "host_unknown",
+          "identity_unobservable",
+          "model_unavailable",
+          "no_qualified_binding",
+          "tool_unavailable"
+        ]
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "method_ids": {
+      "items": {
+        "enum": [
+          "acpl-lab",
+          "ce-brainstorm",
+          "ce-code-review",
+          "ce-debug",
+          "ce-plan",
+          "ce-pov",
+          "ce-work",
+          "direct",
+          "governed",
+          "lightweight"
+        ]
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "observed_effort": {
+      "enum": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "minimal",
+        "none",
+        "ultra",
+        "xhigh",
+        null
+      ]
+    },
+    "observed_model": {
+      "enum": [
+        "claude-fable-5-1",
+        "claude-haiku-4-5-20251001",
+        "claude-opus-5-5",
+        "claude-sonnet-5",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-6-sol",
+        null
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "blocked",
+        "direct_execution",
+        "governed_r1",
+        "governed_r2",
+        "governed_r3",
+        "lightweight_routing",
+        "skipped",
+        "unknown"
+      ]
+    },
+    "plugin_ids": {
+      "items": {
+        "enum": [
+          "acpl-cyber-range",
+          "agent-council",
+          "compound-engineering",
+          "deslop-content",
+          "frontend-design",
+          "openai-docs"
+        ]
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "plugin_version": {
+      "pattern": "^[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requested_effort": {
+      "enum": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "minimal",
+        "none",
+        "ultra",
+        "xhigh",
+        null
+      ]
+    },
+    "requested_model": {
+      "enum": [
+        "claude-fable-5-1",
+        "claude-haiku-4-5-20251001",
+        "claude-opus-5-5",
+        "claude-sonnet-5",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-6-sol",
+        null
+      ]
+    },
+    "requested_role": {
+      "enum": [
+        "arbiter",
+        "builder",
+        "investigator",
+        "operational_intelligence",
+        "orchestrator",
+        "reviewer",
+        "technical_tactical_intelligence",
+        "ultimate_intelligence",
+        "worker_intelligence",
+        null
+      ]
+    },
+    "schema_version": {
+      "const": "agent-council.decision-trace/v1"
+    },
+    "session_token": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}$",
+      "type": "string"
+    },
+    "trigger_codes": {
+      "items": {
+        "enum": [
+          "acceptance_change",
+          "architecture_change",
+          "authority_change",
+          "automation_repair",
+          "delegation_benefit",
+          "lifecycle_change",
+          "material_design",
+          "qualification_failure",
+          "repeated_failure",
+          "safety_change",
+          "shared_contract_change",
+          "uncertain_composition",
+          "unexpected_failure",
+          "updater_change"
+        ]
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "activation_source",
+    "event_id",
+    "event_kind",
+    "evidence_source",
+    "exclusion_codes",
+    "fallback_codes",
+    "host_kind",
+    "limitation_codes",
+    "method_ids",
+    "observed_effort",
+    "observed_model",
+    "outcome",
+    "plugin_ids",
+    "plugin_version",
+    "requested_effort",
+    "requested_model",
+    "requested_role",
+    "schema_version",
+    "session_token",
+    "timestamp",
+    "trigger_codes"
+  ],
+  "title": "Agent Council local decision trace",
+  "type": "object"
+}

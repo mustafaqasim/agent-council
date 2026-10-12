@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-council:schema:model-registry:v3",
+  "title": "Agent Council v3 provider binding registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "registry_version", "registry_sha256", "reasoning", "provider_states", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agent-council.model-registry/v3"},
+    "registry_version": {"const": "v3"},
+    "registry_sha256": {"$ref": "#/$defs/sha256"},
+    "reasoning": {"type": "object", "additionalProperties": false, "required": ["policy"], "properties": {"policy": {"const": "per_binding"}}},
+    "provider_states": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["council_status"], "properties": {"council_status": {"enum": ["qualified", "partially_qualified", "fail_closed_until_qualified"]}}}},
+    "bindings": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["binding_id", "provider", "model_id", "tier", "status", "binding_sha256", "reasoning"],
+      "properties": {
+        "binding_id": {"$ref": "#/$defs/id"},
+        "provider": {"type": "string", "minLength": 1},
+        "model_id": {"type": "string", "minLength": 1},
+        "tier": {"enum": ["ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence"]},
+        "status": {"enum": ["qualified", "candidate", "revoked", "hard_expired", "retired"]},
+        "qualified_roles": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/role"},
+          "description": "Verified role-protocol coverage at this binding's default effort. Historical bindings without this field qualify only their declared tier."
+        },
+        "selection": {
+          "type": "object", "additionalProperties": false,
+          "required": ["role", "priority", "fallback_for"],
+          "properties": {
+            "role": {"enum": ["primary", "reserve"]},
+            "priority": {"type": "integer", "minimum": 0},
+            "fallback_for": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+          },
+          "description": "Absent metadata means primary, priority 0, no explicit fallback targets. Lower priority values sort first within primary or reserve class, then binding ID. Higher-tier fallback requires an explicit target ID, the same provider, and verified qualified_roles coverage for the requested role at the selected binding's default effort."
+        },
+        "lifecycle": {
+          "type": "object", "additionalProperties": false,
+          "required": ["retired_at", "reason", "replacement_binding_id"],
+          "properties": {
+            "retired_at": {"type": ["string", "null"], "format": "date-time"},
+            "reason": {"type": ["string", "null"], "minLength": 1},
+            "replacement_binding_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+          }
+        },
+        "binding_sha256": {"$ref": "#/$defs/sha256"},
+        "reasoning": {
+          "type": "object", "additionalProperties": false,
+          "required": ["supported", "default_effort", "allowed_efforts"],
+          "properties": {
+            "supported": {"type": "boolean"},
+            "default_effort": {"enum": [null, "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]},
+            "allowed_efforts": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/effort"}}
+          },
+          "allOf": [{
+            "if": {"properties": {"supported": {"const": false}}},
+            "then": {"properties": {"default_effort": {"type": "null"}, "allowed_efforts": {"maxItems": 0}}},
+            "else": {"properties": {"default_effort": {"$ref": "#/$defs/effort"}, "allowed_efforts": {"minItems": 1}}}
+          }],
+          "$comment": "Runtime additionally verifies that the default belongs to allowed_efforts, binding and registry hashes match, binding IDs are unique, and each provider has an explicit provider state."
+        }
+      },
+      "allOf": [{
+        "if": {"properties": {"status": {"const": "retired"}}},
+        "then": {"required": ["lifecycle"], "properties": {"lifecycle": {"properties": {"retired_at": {"type": "string"}, "reason": {"type": "string"}}}}},
+        "else": {"properties": {"lifecycle": {"properties": {"retired_at": {"type": "null"}, "reason": {"type": "null"}, "replacement_binding_id": {"type": "null"}}}}}
+      }, {
+        "if": {"required": ["qualified_roles"]},
+        "then": {"properties": {"status": {"enum": ["qualified", "retired"]}}}
+      }, {
+        "if": {"properties": {"tier": {"const": "ultimate_intelligence"}}},
+        "then": {"properties": {"qualified_roles": {"contains": {"const": "ultimate_intelligence"}}}}
+      }, {
+        "if": {"properties": {"tier": {"const": "operational_intelligence"}}},
+        "then": {"properties": {"qualified_roles": {"contains": {"const": "operational_intelligence"}}}}
+      }, {
+        "if": {"properties": {"tier": {"const": "technical_tactical_intelligence"}}},
+        "then": {"properties": {"qualified_roles": {"contains": {"const": "technical_tactical_intelligence"}}}}
+      }, {
+        "if": {"properties": {"tier": {"const": "worker_intelligence"}}},
+        "then": {"properties": {"qualified_roles": {"contains": {"const": "worker_intelligence"}}}}
+      }]
+    }}
+  },
+  "$comment": "Provider summaries are derived independently from active candidate/qualified bindings: none qualified is fail_closed_until_qualified, some is partially_qualified, all is qualified. Retired, revoked, and hard_expired rows are never eligible. Runtime validates fallback references and retirement replacements within the same provider, disallows lower-tier fallback, and requires replacement bindings to share the retired tier and not be retired.",
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{2,127}$"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "role": {"enum": ["ultimate_intelligence", "operational_intelligence", "technical_tactical_intelligence", "worker_intelligence"]},
+    "effort": {"enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]}
+  }
+}

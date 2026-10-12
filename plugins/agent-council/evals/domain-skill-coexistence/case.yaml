@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.1",
+  "name": "domain-skill-coexistence",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "domain-skill-coexistence"
+  ],
+  "execution": {
+    "prompt": "Use both agent-council:agent-council and fixture-domain:source-check. First apply the Council applicability check. Then have the domain skill perform its small source-check method on this supplied note: 'The pilot had 20 participants; 18 completed onboarding.' Return the domain skill's method marker and the verified completion fraction. Keep the task local, read-only, and do not delegate.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "domain-skill-observed",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "fixture-domain:source-check",
+      "min": 1
+    },
+    {
+      "type": "tool_order",
+      "name": "council-before-domain",
+      "before": {
+        "tool": "Skill",
+        "input_match": "agent-council"
+      },
+      "after": {
+        "tool": "Skill",
+        "input_match": "fixture-domain:source-check"
+      }
+    },
+    {
+      "type": "regex",
+      "name": "domain-outcome",
+      "target": "last_message",
+      "pattern": "SOURCE_CHECK_OK",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "completion-fraction",
+      "target": "last_message",
+      "pattern": "18\\s*/\\s*20|90%",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ],
+  "plugins": [
+    "../..",
+    "fixture-domain"
+  ]
+}

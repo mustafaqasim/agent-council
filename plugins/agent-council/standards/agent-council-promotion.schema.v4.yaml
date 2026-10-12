@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-council:schema:promotion-proof:v4",
+  "title": "Agent Council public role qualification promotion proof",
+  "description": "Strict allowlisted public projection of a verified private role proof. No raw prompts, outputs, rationales, session IDs, private paths or logs. Native scoring is not replayed publicly and full-context blindness is not verified.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evidence_assurance",
+    "provider_authenticity_verified",
+    "native_harness_scoring_replayed",
+    "source_proof_sha256",
+    "candidate_registry",
+    "candidate_release_binding",
+    "promoted_release_binding",
+    "binding_evidence",
+    "qualification_protocol_version",
+    "full_context_blindness_verified"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agent-council.promotion-proof/v4"
+    },
+    "evidence_assurance": {
+      "const": "structural_only"
+    },
+    "provider_authenticity_verified": {
+      "const": false
+    },
+    "native_harness_scoring_replayed": {
+      "const": false
+    },
+    "source_proof_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "candidate_registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "standards/model-qualifications/candidate-registry.v3.json"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "candidate_release_binding": {
+      "$ref": "#/$defs/release_binding"
+    },
+    "promoted_release_binding": {
+      "$ref": "#/$defs/release_binding"
+    },
+    "binding_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    },
+    "qualification_protocol_version": {
+      "const": "agent-council.role-qualification/v1"
+    },
+    "full_context_blindness_verified": {
+      "const": false
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nullable_hash": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)[^\\\\:\\u0000-\\u001f\\u007f]+$"
+    },
+    "release_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "behavioral_identity",
+        "eval_suite_sha256"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agent-council.release-binding/v1"
+        },
+        "eval_suite_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "behavioral_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "identity_version",
+            "inventory_sha256",
+            "files_sha256",
+            "behavioral_sha256",
+            "paths"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": "agent-council.behavioral-identity/v1"
+            },
+            "identity_version": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._/-]*$"
+            },
+            "inventory_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "files_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "behavioral_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/path"
+              }
+            }
+          }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "session_sha256",
+        "parent_session_sha256",
+        "agent_sha256",
+        "turn_sha256",
+        "parent_transcript_sha256",
+        "transcript_sha256",
+        "case_outcomes"
+      ],
+      "properties": {
+        "run_id": {
+          "enum": [
+            "native-forward-run-1",
+            "native-forward-run-2"
+          ]
+        },
+        "session_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "parent_session_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "agent_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "turn_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "parent_transcript_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "transcript_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "case_outcomes": {
+          "$ref": "#/$defs/case_outcomes"
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_sha256",
+        "parent_session_sha256",
+        "agent_sha256",
+        "turn_sha256",
+        "parent_transcript_sha256",
+        "transcript_sha256",
+        "case_outcomes",
+        "agent_definition_sha256",
+        "loader_debug_log_sha256"
+      ],
+      "properties": {
+        "session_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "parent_session_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "agent_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "turn_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "parent_transcript_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "transcript_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "agent_definition_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "loader_debug_log_sha256": {
+          "$ref": "#/$defs/nullable_hash"
+        },
+        "case_outcomes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/case_outcomes"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding_id",
+        "identity_assurance",
+        "model_id",
+        "effort",
+        "runs",
+        "probe",
+        "qualification_protocol"
+      ],
+      "properties": {
+        "binding_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{2,127}$"
+        },
+        "identity_assurance": {
+          "enum": [
+            "host_selected",
+            "transcript_reported"
+          ]
+        },
+        "model_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "effort": {
+          "enum": [
+            null,
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/run"
+          }
+        },
+        "probe": {
+          "$ref": "#/$defs/probe"
+        },
+        "qualification_protocol": {
+          "$ref": "#/$defs/qualification_protocol"
+        }
+      }
+    },
+    "qualification_protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "suite_id",
+        "suite_sha256",
+        "tier",
+        "role_coverage",
+        "role_contract_sha256",
+        "scenario_ids"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "agent-council.role-qualification/v1"
+        },
+        "suite_id": {
+          "enum": [
+            "role-v1/worker_intelligence",
+            "role-v1/technical_tactical_intelligence",
+            "role-v1/operational_intelligence",
+            "role-v1/ultimate_intelligence"
+          ]
+        },
+        "suite_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tier": {
+          "enum": [
+            "worker_intelligence",
+            "technical_tactical_intelligence",
+            "operational_intelligence",
+            "ultimate_intelligence"
+          ]
+        },
+        "role_coverage": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "worker_intelligence",
+              "technical_tactical_intelligence",
+              "operational_intelligence",
+              "ultimate_intelligence"
+            ]
+          }
+        },
+        "role_contract_sha256": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "worker_intelligence": {
+              "$ref": "#/$defs/sha256"
+            },
+            "technical_tactical_intelligence": {
+              "$ref": "#/$defs/sha256"
+            },
+            "operational_intelligence": {
+              "$ref": "#/$defs/sha256"
+            },
+            "ultimate_intelligence": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        "scenario_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(SAFE(0[1-9]|10)|WORK0[12]|TECH0[12]|OPS0[12]|ULT0[1-5])$"
+          }
+        }
+      },
+      "description": "Verifier requires exact equality to the normative tier-derived protocol, suite digest, role-contract hashes, ordered coverage and case IDs."
+    },
+    "case_outcomes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_id",
+          "status",
+          "assertion_failures",
+          "prohibited_actions"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "pattern": "^(SAFE(0[1-9]|10)|WORK0[12]|TECH0[12]|OPS0[12]|ULT0[1-5])$"
+          },
+          "status": {
+            "const": "passed"
+          },
+          "assertion_failures": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "prohibited_actions": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      },
+      "description": "Exact ordered complete passing results derived by private transcript scoring; public verification checks normative case coverage, not provider authenticity or raw response replay."
+    }
+  },
+  "$comment": "Role protocol promotion requires exact normative suite identity and role coverage for the archived binding tier and exact model/default effort. Two fresh passing runs and a separate pinned native probe are mandatory. The resulting registry gains only status, verified qualified_roles and corresponding hashes. Legacy proofs remain distinct and confer no implicit lower-role coverage."
+}

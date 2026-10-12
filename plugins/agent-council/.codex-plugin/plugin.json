@@ -1,6 +1,7 @@
 {
   "name": "agent-council",
-  "version": "0.8.2",
+  "version": "0.9.0",
+  "license": "MIT",
   "description": "Stop manually switching AI models. Send each task to the right model tier and add independent review when the work is risky.",
   "author": {
     "name": "Mustafa Qasim"

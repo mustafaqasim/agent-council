@@ -1,0 +1,45 @@
+schema_version: "agent-council.governed-workflow/v1"
+purpose: "Formal evidence gates after the entry point selects R1, R2, or R3."
+boundary:
+  - "Preserve entry-point scope, authority, reentry, and highest-risk precedence. A case grants no operational authority."
+  - "For repeated unresolved failure, separate the observed symptom from the hypothesized cause and restart diagnosis. Do not repeat the same repair without materially new evidence."
+  - "When excluding routine deterministic work from a governed case, record the ordinary-operation exclusion where required and preserve existing authorization."
+supporting_references:
+  base: "All references below are relative to the skill directory, not this reference directory. Read only those whose stated condition applies."
+  profiles: "Before case initialization, read references/project-profiles.yaml. Select and state one explicit effective profile: repository .agent-council/profile.yaml, an explicitly selected packaged profile, or ../../profiles/default.yaml relative to the skill directory when none is present."
+  dispatch: "Before model dispatch or availability decisions, read references/model-adapters.yaml and resolve active qualified bindings through the versioned registry."
+  review: "Before review, read references/review-lenses.yaml."
+  qualification: "Before qualification or behavioral validation, read references/forward-tests.yaml."
+  compound_engineering: "Read references/compound-engineering.yaml only when Compound Engineering is available and its method fits the work. It is optional, never an activation prerequisite or a dependency for normal Council operation."
+  unavailable: "If a required supporting reference is missing or unreadable, block the affected work and report its path. Continue only independent authorized work. Never invent missing rules or downgrade the route."
+profile_limits:
+  - "The outer agent selects and interprets the profile. The local runtime pins only the packaged default profile hash; it does not dynamically load, merge, inherit, or semantically enforce repository profiles. Hold the affected route for unsupported or ambiguous selection or inheritance."
+  - "Do not inherit unrelated project rules or change external-action authority through profile selection or fallback. Profiles may raise floors or add gates, never weaken qualification or review."
+roles:
+  ultimate_intelligence: "Routing, architecture, difficult diagnosis, and final disposition."
+  operational_intelligence: "Coordination, integration ownership, and independent review."
+  technical_tactical_intelligence: "Bounded implementation and technical verification."
+  worker_intelligence: "Mechanical evidence gathering and deterministic checks."
+delegation:
+  - "Select a qualified active binding meeting the route and task. Honor explicit user model or effort preferences only when compatible with the binding, route, and native tool support; otherwise state the limitation and preserve the floor under adapter fallback rules."
+  - "Never treat a prompt claiming a model name as proof of selection. Use native dispatch and observed identity. The engine never launches models."
+  - "Before each lightweight or governed delegation, show the concise notice. For this route: Council: <model>/<effort> (<premium|standard|economical>) assigned <task> because <brief reason>."
+  - "After the worker returns, report its disposition and evidence produced. Do not expose private chain-of-thought or internal deliberation."
+evidence:
+  - "For shared-contract or shared-interface changes, require ultimate design review, integration evidence across the affected consumers, and fault evidence. Unit evidence for one component does not satisfy that boundary."
+  - "Use clean contexts for independent review. The implementation author cannot review their own work. Reject self-review; hold closure until the named independent review gate is satisfied."
+  - "Changing candidate bytes starts a new candidate cycle and invalidates stale evidence and unconsumed dispatch plans. Require fresh review and two fresh candidate-bound native qualification runs before promotion or closure."
+  - "Review follows the implementation, packet result, tests, and behavioral evidence it evaluates. Active holds or rejected dispositions block dependent gates until explicitly superseded."
+  - "Capability or dispatch receipts prove authority provenance only, never behavioral tests, review, acceptance, or closure."
+engine:
+  path: "../../scripts/core/agent-council/0.2.0/Invoke-AgentCouncil.py, relative to the skill directory."
+  cases: "Store immutable cases under .agent/council/<case_id>/ unless an effective profile provides another confined path."
+  function: "Use the local engine for immutable case authoring and structural validation: plan recording, model/context identity, evidence linkage, self-review prevention, and closure refusal for missing, failed, stale, or different-candidate gates."
+  assurance: "Local receipts provide structural_only assurance. Provider execution and real-world acceptance remain the outer agent's responsibility, supported by observed tool results."
+methods:
+  - "Native standalone workflow is primary. The domain skill supplies its method within Council gates and existing user authority."
+  - "When Compound Engineering is used, it may define planning, debugging, implementation, review, and shipping methods. Reuse a completed gate only when its receipt satisfies the Council evidence contract."
+  - "If Compound Engineering is unavailable, continue with an equivalent native standalone method and record that no Compound Engineering receipt exists."
+closure:
+  - "If a required Council model tier is unavailable, record the limitation and hold only the dependent Council gate. Continue only permitted independent work."
+  - "Do not silently substitute a lower tier, invent a receipt, or claim closure while required gates remain unsatisfied."

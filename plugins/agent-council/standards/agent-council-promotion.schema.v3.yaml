@@ -1,0 +1,396 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-council:schema:promotion-proof:v3",
+  "title": "Agent Council private role qualification promotion proof",
+  "description": "Private role protocol proof. Verification rescoring requires exact native responses, suite pins, candidate identity, role coverage, two fresh runs and the independently pinned probe. Codex requires host-selected native replay. Claude replays bounded response scoring and observed identity only; workspace preparation and clean-context collector checks are not replayed from these proof artifacts. Hash commitments do not authenticate providers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evidence_assurance",
+    "candidate_registry",
+    "candidate_release_binding",
+    "promoted_release_binding",
+    "binding_evidence",
+    "qualification_protocol_version"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agent-council.promotion-proof/v3"
+    },
+    "evidence_assurance": {
+      "const": "structural_only"
+    },
+    "candidate_registry": {
+      "$ref": "#/$defs/file_reference",
+      "description": "Exact candidate v3 registry bytes, normally standards/model-qualifications/candidate-registry.v3.json. Do not parse and reserialize when archiving. The archive must not appear in behavioral inventory. Already-qualified archive rows are rejected because prior-proof lineage is not supported. Incremental promotions accumulate evidence against the same frozen candidate baseline. Every qualified live row must be covered."
+    },
+    "candidate_release_binding": {
+      "$ref": "#/$defs/release_binding"
+    },
+    "promoted_release_binding": {
+      "$ref": "#/$defs/release_binding"
+    },
+    "binding_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/binding_evidence"
+      },
+      "description": "Exactly one entry for each candidate binding promoted by this transformation. A single binding, tier, or provider can be promoted independently. Untouched bindings retain their original status and bytes. Pair, run, and child artifacts must be unique; frozen release and parent transcript files may be shared. Qualification sessions must be distinct across the promoted bindings and probe sessions. Probe parents may be shared. Codex child sessions must differ from their parent and all other children. Claude children may share their parent session ID but must have distinct agent IDs."
+    },
+    "qualification_protocol_version": {
+      "const": "agent-council.role-qualification/v1"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)[^\\\\:\\u0000-\\u001f\\u007f]+$",
+      "description": "Canonical package-relative path. Runtime rejects empty components, traversal, symlinks, hardlink aliases, nonregular files, and files changed during verification."
+    },
+    "file_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "behavioral_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "identity_version",
+        "inventory_sha256",
+        "files_sha256",
+        "behavioral_sha256",
+        "paths"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agent-council.behavioral-identity/v1"
+        },
+        "identity_version": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._/-]*$"
+        },
+        "inventory_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "files_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "behavioral_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        }
+      }
+    },
+    "release_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "behavioral_identity",
+        "eval_suite_sha256"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "agent-council.release-binding/v1"
+        },
+        "behavioral_identity": {
+          "$ref": "#/$defs/behavioral_identity"
+        },
+        "eval_suite_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "binding_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]{2,127}$"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt",
+        "transcript"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/$defs/file_reference"
+        },
+        "transcript": {
+          "$ref": "#/$defs/file_reference"
+        },
+        "parent_transcript": {
+          "$ref": "#/$defs/file_reference"
+        }
+      },
+      "description": "A passing v3 qualification receipt and exact JSONL transcript. Both requested and actual model/effort must equal the candidate binding, including explicit null effort. All twelve scenario results must pass and agree with rescored transcript answers. Native harness remains responsible for clean prompt, required reads, allowed tools, and frozen workspace bundle checks."
+    },
+    "binding_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding_id",
+        "pair",
+        "runs",
+        "probe",
+        "probe_files",
+        "qualification_protocol"
+      ],
+      "properties": {
+        "binding_id": {
+          "$ref": "#/$defs/binding_id"
+        },
+        "host_selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "preparation",
+            "prompt"
+          ],
+          "properties": {
+            "preparation": {
+              "$ref": "#/$defs/file_reference"
+            },
+            "prompt": {
+              "$ref": "#/$defs/file_reference"
+            }
+          },
+          "description": "Codex-only lower-assurance route. Retain the exact collector preparation and blind prompt. Each run requires both native parent and child exports. Pair and run receipts use codex-host-selected-qualification-pair/v1 and codex-host-selected-qualification-receipt/v1. The probe is a third independently completed host-selected qualification receipt with its own retained preparation and prompt and distinct child and turn identities. Replay verifies candidate bytes, explicit native model and effort selection, parent call/result, child linkage, prompt delivery, completion and all scores. Source collection compares retained exports against native Codex session-store files. Archived replay is portable structural evidence and does not authenticate the host or provider."
+        },
+        "pair": {
+          "$ref": "#/$defs/file_reference"
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/run"
+          }
+        },
+        "probe": {
+          "$ref": "#/$defs/file_reference"
+        },
+        "probe_files": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "release_binding",
+            "parent_transcript",
+            "child_transcript"
+          ],
+          "properties": {
+            "release_binding": {
+              "$ref": "#/$defs/file_reference"
+            },
+            "parent_transcript": {
+              "$ref": "#/$defs/file_reference"
+            },
+            "child_transcript": {
+              "$ref": "#/$defs/file_reference"
+            },
+            "preparation": {
+              "$ref": "#/$defs/file_reference"
+            },
+            "prompt": {
+              "$ref": "#/$defs/file_reference"
+            },
+            "loader_debug_log": {
+              "$ref": "#/$defs/file_reference"
+            }
+          }
+        },
+        "qualification_protocol": {
+          "$ref": "#/$defs/qualification_protocol"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "host_selection"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runs": {
+                "items": {
+                  "required": [
+                    "parent_transcript"
+                  ]
+                }
+              },
+              "probe_files": {
+                "required": [
+                  "preparation",
+                  "prompt"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "runs": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "parent_transcript"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "$comment": "Claude probe evidence includes a frozen session debug log and exact candidate loader root. Promotion reparses the log. Canonical claude-code-v3-{role} bindings use agents/council-{role}.md and agent-council:council-{role}. Other Claude binding IDs use agents/{binding_id}.md and agent-council:{binding_id}, allowing distinct models within a tier. The definition must be in the behavioral inventory and match the probe hash. Codex host_selection is a separate opt-in structural path; it never supplies provider_attested fields or upgrades client_configuration receipts. This is structural evidence, not cryptographic attestation."
+    },
+    "codex_native_attestation": {
+      "type": "object",
+      "required": [
+        "provider",
+        "provenance",
+        "requested_model_id",
+        "provider_attested_model_id",
+        "requested_effort",
+        "provider_attested_effort"
+      ],
+      "properties": {
+        "provider": {
+          "const": "codex"
+        },
+        "provenance": {
+          "const": "native_session_export"
+        },
+        "requested_model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_attested_model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_effort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider_attested_effort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "description": "Required additional fields on normalized Codex v3 pair and run receipts and v1 Agent-probe receipts. They are data to check, not proof that the provider issued the artifact. Native collection and a provider-specific verifier remain separate responsibilities. Client-selected turn_context configuration is not provider attestation and cannot be normalized into attested model or effort."
+    },
+    "qualification_protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "suite_id",
+        "suite_sha256",
+        "tier",
+        "role_coverage",
+        "role_contract_sha256",
+        "scenario_ids"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "agent-council.role-qualification/v1"
+        },
+        "suite_id": {
+          "enum": [
+            "role-v1/worker_intelligence",
+            "role-v1/technical_tactical_intelligence",
+            "role-v1/operational_intelligence",
+            "role-v1/ultimate_intelligence"
+          ]
+        },
+        "suite_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tier": {
+          "enum": [
+            "worker_intelligence",
+            "technical_tactical_intelligence",
+            "operational_intelligence",
+            "ultimate_intelligence"
+          ]
+        },
+        "role_coverage": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "worker_intelligence",
+              "technical_tactical_intelligence",
+              "operational_intelligence",
+              "ultimate_intelligence"
+            ]
+          }
+        },
+        "role_contract_sha256": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "worker_intelligence": {
+              "$ref": "#/$defs/sha256"
+            },
+            "technical_tactical_intelligence": {
+              "$ref": "#/$defs/sha256"
+            },
+            "operational_intelligence": {
+              "$ref": "#/$defs/sha256"
+            },
+            "ultimate_intelligence": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        "scenario_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(SAFE(0[1-9]|10)|WORK0[12]|TECH0[12]|OPS0[12]|ULT0[1-5])$"
+          }
+        }
+      },
+      "description": "Verifier requires exact equality to the normative tier-derived protocol, suite digest, role-contract hashes, ordered coverage and case IDs."
+    }
+  },
+  "$comment": "Role protocol promotion requires exact normative suite identity and role coverage for the archived binding tier and exact model/default effort. Two fresh passing runs and a separate pinned native probe are mandatory. The resulting registry gains only status, verified qualified_roles and corresponding hashes. Legacy proofs remain distinct and confer no implicit lower-role coverage."
+}

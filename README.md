@@ -35,11 +35,11 @@ Agent Council does not read your remaining quota or predict the exact cost. It r
 
 ## Model routing examples
 
-In Codex, routine work can go to Luna, implementation to Terra, review to Sol, and the hardest decisions to Astra.
+Version 0.9.0 is designed to send routine Codex work to Luna, implementation and review to Sol, and the hardest decisions to Astra.
 
-In Claude Code, routine work can go to Haiku 4.5, implementation to Sonnet 5, difficult review to Opus 5.5, and the hardest decisions to Fable 5.1. Opus 5.5 replaces Opus 5 as the qualified operational model.
+For Claude Code, it is designed to send routine work to Haiku 4.5, implementation and operational review to Opus 5.5 at medium effort, and the hardest decisions to Opus 5.5 at high effort.
 
-The available models still depend on your account and host.
+The available models depend on your account and host. Agent Council enables a mapping only after its exact model and effort setting pass native qualification.
 
 ## Example
 
@@ -82,6 +82,12 @@ claude plugin install agent-council@agent-council
 Start a new task after installation so the plugin can load.
 
 Do not install the repository root as a personal plugin. The marketplace installs the package under `plugins/agent-council`.
+
+The package includes portable `plugin.json` metadata and compatibility manifests for Codex and Claude Code. This repository has not been submitted to either universal directory. The local preparation packets in `docs/distribution` record directory submission requirements, including Anthropic's subdirectory hook restriction.
+
+The entry skill loads only the policy needed for its selected route. Optional local decision tracing is disabled by default; set `AGENT_COUNCIL_TRACE=1` in the host environment to enable bounded metadata recording without prompt or response text. Unset it to disable recording. Use `python3 plugins/agent-council/scripts/AgentCouncilTrace.py status` or `python3 plugins/agent-council/scripts/Diagnose-AgentCouncil.py` for read-only status. Traces do not prove instruction following and remain local until removed by the user.
+
+The bundled native eval suite covers routing, authority, delegation, and coexistence with another skill. Release checks require verified model qualification and a paid native eval with publication disabled. A resumable campaign can spread the full 16-case, three-run, two-arm check across subscription quota windows. Offline checks and historical receipts do not replace native release evidence.
 
 ## Update
 
@@ -167,15 +173,14 @@ Run the plugin checks from the plugin directory:
 
 ```sh
 cd plugins/agent-council
-python3 scripts/Test-AgentCouncilPlugin.py
-python3 scripts/Test-AgentCouncilUpdates.py
-python3 scripts/Test-AgentCouncilActivation.py
-python3 scripts/Test-ClaudeQualificationHarness.py
-python3 scripts/Test-RoutingPolicyPacketD.py
-python3 scripts/Test-AgentCouncilBenchmark.py
-for group in schema lifecycle stages routes provider authoring security dispatch-contracts; do
+for test in scripts/Test-*.py; do
+  python3 "$test"
+done
+for group in schema lifecycle stages routes provider authoring security dispatch-contracts registry-schema; do
   python3 scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py --group "$group"
 done
 ```
+
+The `registry-schema` group needs the optional `jsonschema` Python package.
 
 See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [MIGRATION.md](MIGRATION.md).

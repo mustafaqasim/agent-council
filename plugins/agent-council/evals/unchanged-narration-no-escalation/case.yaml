@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.1",
+  "name": "unchanged-narration-no-escalation",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "no-escalation-unchanged-narration"
+  ],
+  "execution": {
+    "prompt": "Use Agent Council's applicability check for this ongoing local task. The previous check chose direct execution for a known-cause reversible ordinary typo repair. The user repeats 'please fix that typo' and ten minutes have elapsed. No facts changed: same cause, scope, authority, affected files, contracts, safety, acceptance, qualification, and failure count. Explain whether the repetition alone changes the route. Stop without editing.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "regex",
+      "name": "retain-direct",
+      "target": "last_message",
+      "pattern": "direct execution|no.*reassess|no.*escalat|unchanged",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-governed-route",
+      "target": "last_message",
+      "pattern": "governed case R[123]",
+      "flags": "i",
+      "match": "not_contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-delegation",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "format": "YAML 1.2 using JSON-compatible syntax; local preparation records, not publisher API payloads",
+  "version": "0.9.0",
+  "status": "local_preparation_only",
+  "sources_checked_at": "2026-09-26T16:35:28+10:00",
+  "package_root": "./plugins/agent-council",
+  "portable_schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "schema_scope": {
+    "manifest": "Portable identity and metadata only. Fixed ./skills discovery supplies the skill.",
+    "compatibility": "Retain .codex-plugin/plugin.json and .claude-plugin/plugin.json for existing hosts; their fields do not extend portable plugin.json.",
+    "hooks": "Hooks are host-specific behavior, not a portable component defined by Agent Plugins 1.0.0.",
+    "caveat": "Directory acceptance and host execution are separate from local schema and path checks."
+  },
+  "directory_review_gaps": [
+    {
+      "status": "verified_locally",
+      "requirement": "Package-local README exists with at least 40 non-code words; Test-AgentCouncilDistribution.py checks the requirement.",
+      "source": "https://claude.com/docs/plugins/pre-submission-checklist"
+    },
+    {
+      "status": "verified_locally",
+      "requirement": "Package-local LICENSE matches the repository MIT notice; the recognized Claude manifest declares MIT. Final archive inclusion remains to be verified.",
+      "source": "https://claude.com/docs/plugins/pre-submission-checklist"
+    },
+    {
+      "status": "pending_directory_compatibility_resolution",
+      "requirement": "The Anthropic checklist blocks subdirectory hook paths using variables other than CLAUDE_PLUGIN_ROOT. Dual-host hooks retain PLUGIN_ROOT precedence and an intermediate shell variable to preserve Codex activation. Claude custom hook declarations are additive to hooks/hooks.json; the bundled Codex ingestion validator rejects a hooks manifest field. No compatible host-specific replacement was verified. Resolve before directory submission, without claiming strict CLI validation proves directory acceptance.",
+      "source": "https://claude.com/docs/plugins/pre-submission-checklist"
+    }
+  ],
+  "permissions": {
+    "runtime": "Python 3 and Bash helpers run with the permissions granted by the host and user.",
+    "project_access": "The chosen task can read or modify workspace files through host tools. Governed-case mutations require explicit project and case roots.",
+    "external_actions": "Routing does not authorize publishing, sending, installing, or other external actions.",
+    "hook_trust": "Host-specific command hooks require a supported runtime and host trust before execution.",
+    "authentication": "No plugin-owned login, OAuth flow, credentials store, or MCP server."
+  },
+  "network_behavior": {
+    "engine": "The local governance engine does not call model providers.",
+    "native_dispatch": "Model delegation is executed by native host tools under the user's provider account; the host receives task prompts and selected context.",
+    "updater": {
+      "url": "https://raw.githubusercontent.com/mustafaqasim/agent-council/main/.claude-plugin/marketplace.json",
+      "method": "HTTPS GET",
+      "trigger": "Optional daily notification check in trusted local Codex hooks; explicit manual checks remain available.",
+      "controls": "agent-council update-check off disables automatic checks. Update checks never install an update.",
+      "sent": "Public IP address and normal request metadata; no project content, prompt, case record, or credential in the marketplace request."
+    },
+    "telemetry": "No plugin telemetry endpoint or remote MCP endpoint is declared."
+  },
+  "local_data_handling": {
+    "cases": "Governed cases persist local records, evidence references, receipts, and journals beneath the declared project/case boundary. Lightweight routing creates no Council case.",
+    "updater": "Codex PLUGIN_DATA stores updates-settings.json, updates-state.json, and lock files. update cleanup removes updater settings and check state only.",
+    "benchmark": "The optional paired benchmark writes local observations and does not call models or upload data.",
+    "decision_trace": "Disabled by default; explicit opt-in records bounded local metadata without prompt or response text. Diagnostic presence never proves compliance.",
+    "native_evals": "Paid host-native execution only when explicitly run. Every case disables artifact publication and the runner requires --no-publish. Preparations and command receipts bind behavior and suite digests; ignored local outputs may contain private host transcripts and require review before sharing. Role qualifications bind universal safety and cumulative role coverage to the frozen registry binding. Public proof exports only allowlisted identifiers, hashes, assurance fields, and derived case outcomes; prompts, responses, rationales, local paths, transcripts, and loader logs remain private.",
+    "retention": "Case records remain until the user removes them. Host conversation history and provider retention are controlled by the host and provider.",
+    "security_limits": "Path confinement and secret-pattern rejection reduce accidental writes and exposure; neither is a security sandbox nor a comprehensive secret scanner.",
+    "proof_limits": "Claude private promotion replays bounded response scoring and observed model/effort identity, but does not replay workspace preparation or the clean-context collector. Public proof does not replay the native harness, verify provider authenticity, or establish full context blindness. Historical native receipts containing session identifiers were removed from current source and remain in earlier Git history; they are excluded from the public behavioral inventory and assembled public package."
+  },
+  "compatibility": {
+    "intended_hosts": [
+      "Codex",
+      "Claude Code"
+    ],
+    "portable": "Agent Plugins 1.0.0 metadata with one skill in the standard skills directory.",
+    "native_features": "Delegation needs available host-native agent tools and eligible model access. Shell helpers require Python 3 and Bash.",
+    "hooks": "Host-specific SessionStart and UserPromptSubmit command hooks; ordinary chat and unsupported hosts must not be assumed to execute them.",
+    "optional_plugins": "Compound Engineering is optional. No required plugin dependency is declared.",
+    "observed_cross_plugin_compatibility": "pending; no fresh host combinations have been qualified for this release",
+    "platform_claim": "Local checks on macOS 26.6.2 with Python 3.9.6, Claude Code 2.1.285, and codex-cli 0.159.3 do not qualify Windows locking or prove behavior in every host.",
+    "directory_surfaces": "Being listed across multiple apps does not prove that model delegation, hooks, or local runtime execute in every app."
+  },
+  "release_evidence": {
+    "commit_sha": {
+      "status": "pending",
+      "value": null,
+      "required_evidence": "Full immutable Git commit SHA containing the exact reviewed release files."
+    },
+    "tag": {
+      "status": "pending",
+      "value": null,
+      "required_evidence": "Published release ref resolving to the same commit; no tag has been created by this preparation."
+    },
+    "archive_sha256": {
+      "status": "pending",
+      "value": null,
+      "required_evidence": "SHA-256 of the final upload archive, computed after all release edits and recorded with the packaging command."
+    },
+    "artifact_path": {
+      "status": "pending",
+      "value": null,
+      "required_evidence": "Local final archive path, containing plugins/agent-council contents at its root or one top-level package directory."
+    },
+    "validation_receipt": {
+      "status": "pending",
+      "value": null,
+      "required_evidence": "Commands, exit codes, timestamps with timezone, platform/runtime versions, and output hashes for full release validation."
+    },
+    "native_host_receipts": {
+      "status": "pending",
+      "value": [],
+      "required_evidence": "Fresh Codex and Claude Code host versions, load/activation observations, exact model and effort for each promoted v3 binding, safe execution checks, and exact tested commit/archive hashes. Claude Code also needs an observed native packaged Agent task for each binding. V3 qualification must name the exact binding and pair two fresh same-candidate native runs under the current role protocol, with every required safety and objective assertion passing in each run. Promotion must link the archived candidate registry, exact protocol and role coverage, every binding's pair and independent probe, and the exact promoted package. Verify the privacy-safe public proof independently from its exported closure. Native release eval must retain its preparation, command receipt, and aggregate output, with complete case coverage and passing with-plugin thresholds. Historical v1/v2 receipts, failed GFT runs, and local synthetic tests cannot qualify 0.9.0."
+    },
+    "cross_plugin_receipts": {
+      "status": "pending",
+      "value": [],
+      "required_evidence": "Explicit installed plugin combinations, versions, conflict/authority tests, and observed results on the exact release candidate."
+    }
+  },
+  "publisher_prerequisites": [
+    {
+      "status": "pending",
+      "requirement": "Publisher reviews the final listing text, release artifact, supported surfaces, and claims."
+    },
+    {
+      "status": "pending",
+      "requirement": "Publish an actionable private security reporting channel, privacy policy, and terms where required."
+    },
+    {
+      "status": "pending",
+      "requirement": "Choose supported countries/regions and verify publisher rights to the existing artwork."
+    },
+    {
+      "status": "pending",
+      "requirement": "Confirm production logo requirements; the repository illustration is a reference, not an approved directory logo."
+    },
+    {
+      "status": "pending",
+      "requirement": "Supply exact release evidence and authorize any upload, submission, or publication separately."
+    }
+  ],
+  "sources": [
+    "https://agent-plugins.org/specification",
+    "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    "https://developers.openai.com/plugins/deploy/submission",
+    "https://developers.openai.com/plugins/guides/submit-claude-plugin",
+    "https://code.claude.com/docs/en/plugins/publish",
+    "https://claude.com/docs/plugins/submit",
+    "https://claude.com/docs/plugins/pre-submission-checklist"
+  ],
+  "validation_command": "python3 plugins/agent-council/scripts/Test-AgentCouncilDistribution.py",
+  "local_validation": "./docs/distribution/integration-verification.yaml",
+  "validation_limits": "Offline local contract checks, including injected malformed manifests, missing packet fields, path escapes, and pending or complete release-evidence record shapes. Every evidence record retains status, value, and required_evidence. Pending scalar values are null and pending receipt lists are empty. Complete scalar values are nonempty strings; commit and archive digests use full lowercase hexadecimal. Complete validation_receipt is a reference to the detailed receipt; native_host_receipts and cross_plugin_receipts are nonempty lists of receipt references. Passing these shape checks does not verify receipt contents, referenced file existence, immutable release binding, publisher acceptance, or host behavior."
+}

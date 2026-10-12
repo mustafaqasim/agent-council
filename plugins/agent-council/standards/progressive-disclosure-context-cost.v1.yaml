@@ -1,0 +1,32 @@
+schema_version: "agent-council.context-cost-baseline/v1"
+measured_on: "2026-09-26"
+host_tool: "Claude Code 2.1.281"
+command: "claude --plugin-dir ./plugins/agent-council plugin details agent-council"
+baseline:
+  on_invoke_display: "~3.9k"
+  always_on_display: "~116 tok"
+  component_always_on_display: "~120"
+  skill_bytes: 13038
+  fallback_bytes: 2040
+candidate:
+  on_invoke_display: "~1.6k"
+  always_on_display: "~116 tok"
+  component_always_on_display: "~120"
+  skill_bytes: 5564
+  fallback_bytes: 941
+  skill_sha256: "8c11a5f7e37f153c5aa4ee4b9036ccf791fb788f33cb1bbab46ecc379a4e9711"
+  fallback_sha256: "e15ad7a6cb7f354244bc396616a58ef9140b3caa3211bf63aac39ae7e0e68b5c"
+comparison:
+  displayed_invocation_reduction_percent: 58.97
+  skill_byte_reduction_percent: 57.32
+  target_reduction_percent: 50
+  target_met: true
+limits:
+  - "Token displays are rounded tool estimates, not exact tokenizer counts or observed execution savings."
+  - "On-invoke measures the entry point. Later route reference reads add context when required."
+  - "Direct reads no route reference; lightweight reads only lightweight-routing.yaml; governed reads governed-workflow.yaml plus conditionally required supporting references."
+test_first:
+  command: "python3 plugins/agent-council/scripts/Test-AgentCouncilProgressiveDisclosure.py"
+  red: "5 tests: 3 failures and 2 errors before implementation. Oversize entry/fallback, absent route-local loading, and absent route references."
+  green: "5 tests passed after implementation."
+assurance: "Static content, path, and context-cost checks only; does not assert native qualification or authorize promotion."

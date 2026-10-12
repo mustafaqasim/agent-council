@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.1",
+  "name": "known-cause-local-repair-negative",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "known-cause-local-repair-negative"
+  ],
+  "execution": {
+    "prompt": "In this ordinary local Python expression, a known typo causes a NameError: total = subtotal + taxx. The variable is named tax. Show the corrected expression only; do not modify files. This is reversible ordinary local work, not automation, lifecycle, updater, authority, shared-contract, safety, acceptance, or repeated-failure work.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "regex",
+      "name": "corrected-expression",
+      "target": "last_message",
+      "pattern": "total\\s*=\\s*subtotal\\s*\\+\\s*tax\\b",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-governed-route",
+      "target": "last_message",
+      "pattern": "governed case R[123]",
+      "flags": "i",
+      "match": "not_contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-delegation",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

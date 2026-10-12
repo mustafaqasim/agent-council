@@ -1,0 +1,151 @@
+schema_version: "agent-council.integration-verification/v1"
+recorded_at: "2026-10-01T15:17:07+10:00"
+historical_observations_recorded_at: "2026-09-30T12:46:19+10:00"
+version: "0.9.0"
+status: "current_candidate_unqualified"
+role_protocol_transition:
+  recorded_at: "2026-10-01T19:30:56+10:00"
+  status: "implementation_in_progress_native_evidence_pending"
+  decision: "Use fresh versioned role qualification derived from each frozen registry binding, with universal safety and cumulative role coverage. Preserve historical GFT failures unchanged."
+  public_evidence: "Export allowlisted derived outcomes and evidence hashes only. Raw prompts, responses, rationales, local paths, transcripts, and loader logs remain private."
+  release_gate: "Full release requires verified qualification for all eight default v3 bindings. Partial promotion remains insufficient for a full release."
+  deterministic_scope: "Counts and timestamps below predate this protocol transition and do not validate the edited candidate. Rerun all affected tests after integration."
+branch: "codex/plugin-platform-modernization"
+base_commit: "b3220c55a1cd552fdd338adfec1bccdf6b08456f"
+candidate_commit: null
+candidate_binding:
+  status: "not_frozen_current_candidate_unqualified"
+  behavioral_sha256: null
+  inventory_sha256: null
+  eval_suite_sha256: null
+  package_files: null
+  scope: "Current package is mutable. Freeze and recompute current-identity after all candidate edits; no historical native receipt qualifies it."
+historical_candidate_binding:
+  status: "stale_not_current_candidate_qualification"
+  behavioral_sha256: "6f50555a0c9cc0e066330ff5b2a3b859485d99af3767402b174cd18ef1b96337"
+  inventory_sha256: "f681bb5c12ea9c0f0593de5dc9eb706e36f7aa5ffbc6e2156100f0a08a0724a0"
+  eval_suite_sha256: "f6725224269092bafe3bcb04c9fe5e3527f5775a470d2077256a047b9880034b"
+  package_files: 92
+  scope: "Historical package identity recorded on 2026-09-30; later candidate edits invalidated native qualification. Repository-level directory packets remain separate pending release evidence."
+runtime:
+  platform: "macOS"
+  platform_version: "26.6.2"
+  python: "3.9.6"
+  claude_code: "2.1.285"
+  codex_cli: "0.159.3"
+red_evidence:
+  - "Distribution tests initially failed version alignment and inventory completeness; package README was missing."
+  - "Current qualification test failed before current_release_binding existed."
+  - "Three native eval receipt tests failed before execute and release binding support existed."
+  - "The first fresh Opus 5.5 qualification omitted one required GFT01 claim; a replacement clean run and the independent run passed before later candidate changes invalidated both receipts."
+  - "A partial native release run found 0 of 3 implicit lightweight-positive activations. An imperative skill description raised invocation to 3 of 3, but all three still chose direct execution. The routing boundary was then tightened; provider session limits blocked the required rerun."
+deterministic:
+  status: "current_worktree_passed_not_frozen_release_validation"
+  observed_at: "2026-10-01T15:16:27+10:00"
+  command: 'for test_file in plugins/agent-council/scripts/Test-*.py; do python3 "$test_file" || exit; done'
+  result: "passed in individual parallel invocations; loop command shown for reproducibility"
+  plugin_assertions: 118
+  activation_assertions: 68
+  routing_scenarios: 13
+  distribution_tests: 13
+  benchmark_tests: 5
+  disclosure_tests: 7
+  trace_tests: 16
+  updater_tests: 18
+  native_eval_tests: 30
+  promotion_tests: 47
+  claude_agent_probe_tests: 17
+  codex_qualification_tests: 38
+  case_migration_tests: 20
+  claude_qualification_harness: {result: "passed", synthetic_scenarios: 12, synthetic_pair_runs: 2}
+  scripts_passed: 14
+  qualification: "All top-level test scripts passed on the mutable worktree. The Claude harness reports synthetic fixtures, not fresh native execution. The historical v3 Claude operational pair and packaged Agent probe are stale after candidate changes. All eight current bindings require fresh qualification; historical v1/v2 receipts do not qualify v3."
+native_claude_operational:
+  status: "historical_pass_stale_not_current_candidate_qualification"
+  binding_id: "claude-code-v3-operational"
+  model_id: "claude-opus-5-5"
+  effort: "medium"
+  behavioral_sha256: "6f50555a0c9cc0e066330ff5b2a3b859485d99af3767402b174cd18ef1b96337"
+  evaluation_bundle_sha256: "4fa6ce57ed25d03a3067cc8bb6868a8f2a0b207d76ee30700856a5e76a28cc22"
+  blind_pair: {result: "passed", runs: 2, scenarios_per_run: 12, candidate_sha256: "aaab2ac5c466129170c38032d421f4ea5cb4140c0f7f704b43e6083d9542bb27"}
+  packaged_agent_probe: {result: "passed", resolved_model: "claude-opus-5-5", child_effort: "medium", completion: "agent_result"}
+  rejected_probe: "The first Agent invocation launched asynchronously and lacked a native completion record. The verifier correctly returned PROBE_ASYNC_COMPLETION_MISSING. A fresh session with background tasks disabled produced a completed result."
+  evidence_location: "Ignored local evals/local/v3-opus-5-5-run-{1,2} receipts and evals/local/v3-opus-5-5-agent-probe receipt, with native transcripts and debug log under the user's Claude home. Do not commit raw transcripts."
+core_contracts:
+  status: "current_worktree_passed_not_frozen_release_validation"
+  observed_at: "2026-10-01T15:17:07+10:00"
+  command: "python3 plugins/agent-council/scripts/core/agent-council/0.2.0/Test-AgentCouncilContracts.py --group <group>"
+  result: "passed"
+  assertions_by_group: {schema: 181, lifecycle: 20, stages: 22, routes: 80, provider: 16, authoring: 131, security: 28, dispatch-contracts: 118}
+  assertions_total: 596
+host_validation_scope: "Historical observations from historical_observations_recorded_at; current candidate edits require new validation. These observations do not qualify the current candidate."
+host_validation:
+  - command: "claude plugin validate --strict ./plugins/agent-council"
+    exit_code: 0
+  - command: "claude --plugin-dir ./plugins/agent-council plugin details agent-council"
+    exit_code: 0
+    observations: "Local 0.9.0 candidate loads one skill, four packaged agents, and two hooks from agent-council@inline. This inventories components without running a model."
+  - command: "python3 plugins/agent-council/scripts/NativePluginEvals.py validate"
+    exit_code: 0
+    scope: "Authoring structure and installed native CLI flags, no model execution."
+  - command: "python3 plugins/agent-council/scripts/NativePluginEvals.py release --print-command"
+    exit_code: 1
+    observations: "Expected refusal: verified v3 promotion proof is absent. No paid eval ran."
+  - command: "python3 plugins/agent-council/scripts/NativePluginEvals.py probe"
+    exit_code: 2
+    observations: "Expected zero-cost ceiling. Native loader resolved the local 0.9.0 package and fixture-domain plugin, then ran zero cases and spent $0."
+  - command: "python3 plugins/agent-council/scripts/CodexQualificationHarness.py prepare --output <new real-path workspace>"
+    exit_code: 0
+    observations: "Eight exact Codex dispatch plans prepared. No native agent was launched and every plan is non-promotional."
+  - command: "git diff --check"
+    exit_code: 0
+desktop_capability:
+  entrypoint: "claude-desktop"
+  status: "observed_capability_not_candidate_qualification"
+  parent: {model: "claude-opus-5-5", effort: "medium", stop_reason: "end_turn"}
+  agent: {requested_alias: "sonnet", resolved_model: "claude-sonnet-5-5", child_model: "claude-sonnet-5-5", child_effort: "medium", result: "completed"}
+  limits:
+    - "Desktop startup includes inherited instructions, skills, MCP metadata, and hook context; current CLI clean-context harness correctly refuses it."
+    - "The app's sonnet alias resolved to 5.5, not the candidate's exact Sonnet 5 model."
+    - "The child used internal SubagentHandback calls; no file-reading or file-editing tool was observed."
+  verifier: "Native session-named child transcript layout and frozen sibling layout both accepted; exact agent ID still binds parent result to child path. Session-matched loader debug log must show exact candidate root and ordered inline override. Synthetic parser suite: 16 passing tests."
+  loader_limit: "Debug lines and source paths are local structural provenance, not cryptographic attestation of loaded bytes. Promotion independently reparses the frozen log and checks its hash and root against pinned evidence."
+desktop_blind_qualification:
+  status: "not_equivalent_to_cli_clean_context"
+  observation: "A local Desktop Code session records model, effort, Agent result, and child transcript, but the current blind harness also binds CLI launch flags, initial typed prompt, tool confinement, and clean-session provenance."
+  rule: "Do not accept Desktop chat exports, screenshots, UI model labels, or a relabeled Desktop transcript as blind CLI qualification. A separate adapter would need native launch, tool, context, and source-bound evidence with adversarial tests."
+terminal_auth:
+  status: "interactive_login_succeeded"
+  observation: "Fresh Claude Code OAuth authorization succeeded and first-run onboarding completed. A clean interactive safe/restricted Opus 5.5 session reached its prompt and produced native evidence."
+  action: "User-requested retry used the Claude authorization page. No credential bytes entered or stored in this repository."
+claude_ultimate_access:
+  observed_on: "2026-10-01"
+  host: "Claude Code 2.1.285 interactive CLI"
+  status: "capability_smoke_only_current_candidate_unqualified"
+  observation: "Fable 5.1 at high effort required separately purchased usage credits absent on this account. The host automatically switched to Opus 5.5 at high effort and returned READY. This is not a qualification run."
+  candidate: "claude-code-v3-ultimate -> claude-opus-5-5 at high effort; operational remains a distinct binding at medium effort. All eight v3 bindings remain candidate."
+  requirement: "Fresh blind qualification pair and exact packaged Agent probe for each binding on the frozen candidate."
+preservation:
+  - "Legacy CANDIDATE_FILES unchanged."
+  - "Historical qualification files unchanged in git diff."
+  - "No existing Council cases edited. Three historical receipts containing session identifiers were removed from current plugin source; earlier Git history is unchanged."
+  - "No commit, push, upload, submission, release installation, or artifact publication. Paid native outputs remain ignored local evidence."
+  - "Independent review found and fixed a cross-root registry lookup in the Claude probe; no further P0-P2 finding in the reviewed loader or promotion root handling."
+  - "The native probe runbook includes the required session debug log and states that loader evidence is structural only. The historical operational probe passed on an earlier candidate and is stale for the current package."
+  - "An unrelated installed openai-codex plugin hook failed because node was absent from its hook PATH; Agent Council's own startup and prompt hooks succeeded. This did not become Council qualification evidence."
+native_next:
+  - "Freeze the exact v3 package and evaluation suite after any remaining review edits. Every change invalidates earlier candidate-bound evidence."
+  - "Run two fresh native qualifications for all eight default binding/model/effort pairs using the current role protocol on the frozen candidate. Every applicable safety and task assertion must pass in each run. Earlier Opus results and failed GFT runs do not reduce this requirement."
+  - "Run one exact packaged native Claude Agent probe for all four Claude bindings; alias resolution must match the pinned full model ID and effort."
+  - "Collect two fresh Codex runs and a third independent native probe per binding under the approved host_selected policy. Score with --host-selected against local session-store exports, validate pairs, then verify archived dispatch and scoring replay before promotion. No current binding is qualified by implementation alone."
+  - "After verified deterministic promotion for all eight default bindings, export and independently verify the privacy-safe public proof, then run lightweight-positive and full native release evals from the frozen package snapshot. Inspect complete case coverage, both arms, and with-plugin thresholds before claiming release behavior."
+blockers:
+  - "Anthropic subdirectory hook policy is unresolved: dual-host wrappers use PLUGIN_ROOT; Claude custom declarations are additive and the bundled Codex validator rejects a hooks field. Existing activation is preserved."
+  - "Claude Desktop's inherited context still does not meet the clean blind CLI harness isolation contract; terminal OAuth is no longer a blocker."
+  - "Claude desktop offers Sonnet 5.5 by alias while the v3 technical binding pins Sonnet 5; exact packaged Agent selection is unverified. Fable requires separately purchased credits absent on this account, so the current v3 ultimate candidate uses Opus 5.5/high. Haiku explicit-null effort remains unverified."
+  - "Codex native evidence remains pending. The approved host_selected path accepts explicit native selection at structural_only assurance with provider_authenticity_verified: false; promotion replays archived linkage and scoring. Provider identity and host authenticity remain unverified, and client_configuration-only receipts remain ineligible."
+  - "Exact-candidate cross-plugin evidence, final immutable commit/archive, publisher prerequisites, and directory submission remain pending."
+sources:
+  - "https://claude.com/docs/plugins/pre-submission-checklist"
+  - "https://code.claude.com/docs/en/plugins-reference"
+limits: "Local verification record, not a publisher acceptance receipt or native behavior qualification."

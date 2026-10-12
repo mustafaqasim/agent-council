@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.1",
+  "name": "lightweight-positive",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "lightweight-positive",
+    "no-nested-council"
+  ],
+  "execution": {
+    "prompt": "Prepare an internal decision brief comparing mentor-led, self-service, and hybrid onboarding for a 60-person intake. Have a separate analyst audit the denominators, timing measures, staff-capacity figures, and evidence limits across the three cohorts. Then synthesize that assessment into one recommendation, conditions for changing it, and the two most important unknowns. The following 15 numbered field notes are the entire evidence base. Cohort Alpha (mentor-led, 40 starters): (1) 31 of 40 completed the required checklist by day 14. (2) Median checklist completion was 9 calendar days among completers only. (3) Mentor logs show 142 hours total, but 11 entries have no duration. (4) Six starters transferred teams during onboarding; the completion denominator still includes them. (5) Feedback was collected from 19 respondents, of whom 15 praised tailored answers. Cohort Beta (self-service, 45 starters): (6) 33 of 45 completed by day 14, with transfers excluded from both numerator and denominator in the team's summary. (7) A dashboard reports mean time of 6 business days for 33 completers, while a separate note calls this 8 calendar days. (8) Maintainer logs show 57 hours total, excluding ad hoc manager help. (9) Nine of 22 feedback respondents could not identify an escalation contact. (10) The content library was revised halfway through the cohort, but outcomes were not split by version. Cohort Gamma (hybrid, 38 starters): (11) 32 of 38 completed by day 14, with all starters retained in the denominator. (12) The reported median is 7 calendar days, but it covers only 29 starters with timestamped completions. (13) Mentor sessions total 76 hours and content maintenance totals 29 hours; neither count includes manager help. (14) Seven starters joined after the first weekly mentor session and could only use the library initially. (15) Feedback from 12 respondents mentions clearer escalation in 9 responses, but no common survey question was used across cohorts. Reconcile denominator and calendar-versus-business-day differences before comparing rates or speed. Estimate staff effort for a 60-person intake only where supported, state assumptions and uncertainty, and distinguish observed associations from causal claims. Use only these notes as assessment evidence. You may read applicable skill instructions and their required policy and configuration files. Do not browse for additional evidence, read unrelated files, publish, install, deploy, or change anything. Do the assessment now.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "observed-delegation",
+      "tool": "Agent",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "qualified-plugin-agent",
+      "tool": "Agent",
+      "input_match": "agent-council:council-(worker|technical)",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "delegation-reentry-boundary",
+      "tool": "Agent",
+      "input_match": "council_reentry.{0,10}denied",
+      "min": 1
+    },
+    {
+      "type": "tool_order",
+      "name": "skill-before-delegation",
+      "before": {
+        "tool": "Skill",
+        "input_match": "agent-council"
+      },
+      "after": "Agent"
+    },
+    {
+      "type": "regex",
+      "name": "evidence-used",
+      "target": "last_message",
+      "pattern": "31.{0,10}40|77\\.5%",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "no-governed-route",
+      "target": "last_message",
+      "pattern": "governed case R[123]",
+      "flags": "i",
+      "match": "not_contains"
+    }
+  ]
+}

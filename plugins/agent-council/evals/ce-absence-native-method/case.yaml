@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.1",
+  "name": "ce-absence-native-method",
+  "description": "Behavioral boundary check using observed tool events and deterministic response assertions.",
+  "tags": [
+    "ce-absence"
+  ],
+  "execution": {
+    "prompt": "Use Agent Council to assess a bounded planning request. Compound Engineering is not installed in this isolated evaluation. Outline the native steps for reviewing a proposed change using an independent qualified reviewer and evidence gates. Do not install or invoke another workflow plugin, claim a Compound Engineering receipt exists, dispatch a reviewer, or mutate files. State the missing receipt limitation briefly.",
+    "max_turns": 12,
+    "timeout_seconds": 180,
+    "allowed_tools": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "artifact_publish": false
+  },
+  "runs": 3,
+  "graders": [
+    {
+      "type": "tool_used",
+      "name": "council-invoked",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "agent-council",
+      "min": 1
+    },
+    {
+      "type": "tool_used",
+      "name": "no-ce-tool",
+      "tool": "Skill",
+      "arm": "both",
+      "input_match": "compound-engineering|ce-",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "regex",
+      "name": "native-method",
+      "target": "last_message",
+      "pattern": "\\A(?![\\s\\S]*\\b(?:no\\s+|(?:do\\s+not|don't|never)\\s+use\\s+(?:the\\s+)?)built[- ]in[ \\t]+(?:(?:own|evidence|independent|qualified)[ \\t]+){0,2}(?:reviews?|workflows?|steps?|process(?:es)?|methods?|procedures?|approaches?|mechanisms?|pipelines?|gates?|checks?|protocols?|routines?|practices?)\\b)[\\s\\S]*?(?:(?<![\\w-])native\\b|(?<![\\w-])standalone\\b|(?<![\\w-])built[- ]in[ \\t]+(?:(?:own|evidence|independent|qualified)[ \\t]+){0,2}(?:reviews?|workflows?|steps?|process(?:es)?|methods?|procedures?|approaches?|mechanisms?|pipelines?|gates?|checks?|protocols?|routines?|practices?)\\b)",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "regex",
+      "name": "ce-absence-disclosed",
+      "target": "last_message",
+      "pattern": "no.*receipt|receipt.*(absent|unavailable|not)|not.*installed",
+      "flags": "i",
+      "match": "contains"
+    },
+    {
+      "type": "tool_used",
+      "name": "no-dispatch",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-write",
+      "tool": "Write",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-edit",
+      "tool": "Edit",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "type": "tool_used",
+      "name": "no-bash",
+      "tool": "Bash",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}
