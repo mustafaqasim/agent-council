@@ -416,15 +416,22 @@ def verify_file_read(child: list[dict[str, Any]], delivery: dict[str, str], prom
     for index, event in events:
         item = event["item"]
         command = item.get("command")
+        # New native events persist a bounded preview, not separate streams.
+        # The linked tool result above remains the full-byte authority.
+        raw = prompt.encode("utf-8")
+        marker = b"\n... command output truncated for persistence ...\n"
+        preview = raw if len(raw) <= 65536 else raw[:32743] + marker + raw[-32743:]
+        aggregate = item.get("aggregated_output")
+        legacy_streams = (item.get("stdout") == prompt and item.get("stderr") == ""
+                          and aggregate == prompt)
+        persisted_preview = ("stdout" not in item and "stderr" not in item
+                             and isinstance(aggregate, str) and aggregate.encode("utf-8") == preview)
         if (not call_index < index < result_index or event.get("turn_id") != turn_id
                 or event.get("thread_id") != child_id or not isinstance(command, list)
                 or len(command) != 3 or command[0] not in {"/bin/zsh", "/bin/bash", "/bin/sh"}
                 or command[1:] != ["-c", delivery["read_command"]]
                 or item.get("status") != "completed" or type(item.get("exit_code")) is not int
-                or item["exit_code"] != 0 or item.get("stderr") != ""
-                # formatted_output is only a potentially truncated UI preview.
-                # Both raw command output and the actual tool return must match.
-                or any(item.get(key) != prompt for key in ("stdout", "aggregated_output"))):
+                or item["exit_code"] != 0 or not (legacy_streams or persisted_preview)):
             fail("FILE_READ_EVENT_INVALID")
     return {"file_prompt_bytes_verified": True, "file_prompt_path": delivery["prompt_path"],
             "file_read_call_id": call_id, "file_read_call_line": call_index + 1,

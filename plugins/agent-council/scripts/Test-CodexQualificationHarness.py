@@ -332,6 +332,39 @@ class QualificationTests(unittest.TestCase):
         self.child[7]["payload"]["item"]["command"][-1] += "; true"
         self.assert_rejected("FILE_READ_EVENT_INVALID")
 
+    def test_persisted_command_preview_requires_complete_tool_return(self) -> None:
+        prompt = "a" * 40000 + "b" * 40000
+        delivery = harness.file_delivery(str(self.workspace / harness.PROMPT_NAME), harness.sha(prompt.encode()))
+        meta = {"internal_chat_message_metadata_passthrough": {"turn_id": "turn"}}
+        call = {"type": "custom_tool_call", "name": "functions.exec", "input": delivery["read_call_input"], "call_id": "call", **meta}
+        output = {"type": "custom_tool_call_output", "call_id": "call", **meta, "output": [
+            {"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+            {"type": "input_text", "text": prompt}]}
+        marker = "\n... command output truncated for persistence ...\n"
+        preview = prompt[:32743] + marker + prompt[-32743:]
+        item = {"type": "CommandExecution", "command": ["/bin/sh", "-c", delivery["read_command"]],
+                "status": "completed", "exit_code": 0, "aggregated_output": preview}
+        event = {"type": "item_completed", "turn_id": "turn", "thread_id": "child", "item": item}
+        rows = [{"type": "response_item", "payload": call}, {"type": "event_msg", "payload": event},
+                {"type": "response_item", "payload": output}]
+        self.assertTrue(harness.verify_file_read(rows, delivery, prompt, -1, 3, "turn", "child")["file_prompt_bytes_verified"])
+        for field, value in (("aggregated_output", preview[:-1]), ("stdout", None), ("stderr", "error"),
+                             ("exit_code", 1), ("command", ["/bin/sh", "-c", "other"] )):
+            bad = copy.deepcopy(rows)
+            bad[1]["payload"]["item"][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                harness.verify_file_read(bad, delivery, prompt, -1, 3, "turn", "child")
+        for kind in ("truncated_tool", "wrong_turn", "wrong_thread", "changed_middle"):
+            bad = copy.deepcopy(rows)
+            if kind == "truncated_tool":
+                bad[2]["payload"]["output"][1]["text"] = preview
+            elif kind == "changed_middle":
+                bad[2]["payload"]["output"][1]["text"] = prompt[:40000] + "X" + prompt[40001:]
+            else:
+                bad[1]["payload"]["turn_id" if kind == "wrong_turn" else "thread_id"] = "other"
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                harness.verify_file_read(bad, delivery, prompt, -1, 3, "turn", "child")
+
     def test_file_delivery_pair_replays_tools_and_relocated_archive(self) -> None:
         receipts = []
         for run in sorted(harness.RUN_IDS):
